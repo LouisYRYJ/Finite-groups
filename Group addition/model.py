@@ -1,5 +1,4 @@
 import torch as t
-import einops
 
 
 class MLP(t.nn.Module):
@@ -14,7 +13,7 @@ class MLP(t.nn.Module):
     def forward(self, a, b):
         x1 = self.Embedding_left(a)
         x2 = self.Embedding_right(b)
-        x12 = einops.rearrange([x1, x2], axis=-1)
+        x12 = t.cat([x1, x2], -1)
         hidden = self.linear(x12)
         hidden = self.activation(hidden)
         out = self.Umbedding(hidden)
