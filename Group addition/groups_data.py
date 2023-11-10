@@ -1,3 +1,7 @@
+from torch.utils.data import Dataset
+import torch as t
+
+
 def convert_to_index(x, N_1=7, N_2=2):
     """Convert tuple Z/N_1Z x Z/N_1Z x Z/N_2Z to sequence (0,1,...,N_1*N_1*N_2 - 1)"""
     assert len(x) == 3
@@ -53,8 +57,18 @@ def multiplication_table(multiplication, N_1=7, N_2=2):
     return list_of_multiplications
 
 
-list_1 = multiplication_table(group_1)
+class IntersectionData(Dataset):
+    def __init__(self, N_1=7, N_2=2):
+        self.N_1 = N_1
+        self.N_2 = N_2
+        self.group_1 = group_1
+        self.group_2 = group_2
+        self.list_1 = multiplication_table(self.group_1, self.N_1, self.N_2)
+        self.list_2 = multiplication_table(self.group_2, self.N_1, self.N_2)
+        self.train_data = [i for i, j in zip(self.list_1, self.list_2) if i == j]
 
-list_2 = multiplication_table(group_2)
+    def __getitem__(self, idx):
+        return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
 
-intersection = [i for i, j in zip(list_1, list_2) if i == j]
+    def __len__(self):
+        return len(self.train_data)
