@@ -56,9 +56,9 @@ def multiplication_table(multiplication, N_1=7, N_2=2):
 
 
 class IntersectionData(Dataset):
-    def __init__(self, N_1=7, N_2=2):
-        self.N_1 = N_1
-        self.N_2 = N_2
+    def __init__(self, params):
+        self.N_1 = params.N_1
+        self.N_2 = params.N_2
         self.group_1 = group_1
         self.group_2 = group_2
         self.list_1 = multiplication_table(self.group_1, self.N_1, self.N_2)
@@ -69,4 +69,4 @@ class IntersectionData(Dataset):
         return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
 
     def __len__(self):
-        return 3
+        return len(self.train_data)
