@@ -7,7 +7,8 @@ class MLP(t.nn.Module):
         self.Embedding_left = t.nn.Embedding(params.N, params.embed_dim)
         self.Embedding_right = t.nn.Embedding(params.N, params.embed_dim)
         self.linear = t.nn.Linear(params.embed_dim * 2, params.hidden_size, bias=True)
-        self.activation = t.nn.GELU()
+        if params.activation == "gelu":
+            self.activation = t.nn.GELU()
         self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=True)
 
     def forward(self, a, b):

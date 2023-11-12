@@ -4,13 +4,11 @@ import torch as t
 
 def convert_to_index(x, N_1=7, N_2=2):
     """Convert tuple Z/N_1Z x Z/N_1Z x Z/N_2Z to sequence (0,1,...,N_1*N_1*N_2 - 1)"""
-    assert len(x) == 3
     return x[0] + N_1 * x[1] + N_1 * N_1 * x[2]
 
 
 def convert_to_tuple(x, N_1=7, N_2=2):
     """Convert sequence (0,1,...,N_1*N_1*N_2 - 1) to tuple Z/N_1Z x Z/N_1Z x Z/N_2Z"""
-    assert type(x) is int
     a = x % N_1
     b = ((x - a) // N_1) % N_1
     c = ((x - a - N_1 * b) // (N_1 * N_1)) % N_2
@@ -71,4 +69,4 @@ class IntersectionData(Dataset):
         return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
 
     def __len__(self):
-        return len(self.train_data)
+        return 3
