@@ -8,7 +8,7 @@ import random
 from model import MLP
 import wandb
 from dataclasses import dataclass
-from groups_data import IntersectionData, group_1, group_2
+from groups_data import IntersectionData, group_1, group_2, Group_1_Data
 import copy
 from datetime import datetime
 
@@ -18,16 +18,27 @@ class Parameters:
     N_1: int = 7
     N_2: int = 2
     N: int = N_1 * N_1 * N_2
-    embed_dim: int = 16
-    hidden_size: int = 64
+    embed_dim: int = 50
+    hidden_size: int = 128
     num_epoch: int = 20000
     batch_size: int = 256
     activation: str = "gelu"
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
+    train_frac: float = 0.4
+    weight_decay: float = 0.0002
+    lr: float = 0.01
+    optimizer: str = "sgd"
 
 
+random.seed(42)
 # Creating DataLoader object
+
+
+def random_indices(full_dataset, params):
+    num_indices = int(len(full_dataset) * params.train_frac)
+    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
+    return picked_indices
 
 
 def loss_fn(logits, labels):
@@ -79,12 +90,12 @@ def test_loss(model, params):
     return (loss_group_1, loss_group_2), (accuracy_group_1, accuracy_group_2)
 
 
-def train(model, train_data, params, optimizer):
+def train(model, train_data, params):
     progress_bar = tqdm(total=params.num_epoch * params.max_steps_per_epoch)
     current_day = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
         project="Grokking ambiguous data",
-        name=f"experiment_{current_day}",
+        name=f"experiment_{current_day}_group1",
         config={
             "Epochs": params.num_epoch,
             "Cardinality": params.N,
@@ -99,8 +110,18 @@ def train(model, train_data, params, optimizer):
         shuffle=True,
         drop_last=False,
     )
+
     criterion = t.nn.CrossEntropyLoss()
+    if params.optimizer == "sgd":
+        optimizer = t.optim.SGD(model.parameters(), lr=ExperimentsParameters.lr)
+    if params.optimizer == "adam":
+        optimizer = t.optim.Adam(
+            model.parameters(),
+            weight_decay=ExperimentsParameters.weight_decay,
+            lr=ExperimentsParameters.lr,
+        )
     average_loss_training = 0
+
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
@@ -113,7 +134,6 @@ def train(model, train_data, params, optimizer):
                 {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
             )
             wandb.log({"Training loss": average_loss_training})
-
             average_loss_training = 0
         for x, y, z in train_loader:
             model.train()
@@ -133,15 +153,13 @@ def train(model, train_data, params, optimizer):
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
     IntersectionDataSet = IntersectionData(ExperimentsParameters)
-    model = MLP(ExperimentsParameters)
-    optimizer = t.optim.Adam(model.parameters())
-
-    train(
-        model=model,
-        train_data=IntersectionDataSet,
-        params=ExperimentsParameters,
-        optimizer=optimizer,
+    Group_1_Dataset = Group_1_Data(ExperimentsParameters)
+    Group_1_Training = t.utils.data.Subset(
+        Group_1_Dataset, random_indices(Group_1_Dataset, ExperimentsParameters)
     )
+    model = MLP(ExperimentsParameters)
+
+    train(model=model, train_data=Group_1_Training, params=ExperimentsParameters)
 
 
 """            if (

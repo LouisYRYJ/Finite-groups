@@ -63,3 +63,17 @@ class IntersectionData(Dataset):
 
     def __len__(self):
         return len(self.train_data)
+
+
+class Group_1_Data(Dataset):
+    def __init__(self, params):
+        self.N_1 = params.N_1
+        self.N_2 = params.N_2
+        self.group_1 = group_1
+        self.train_data = multiplication_table(self.group_1, self.N_1, self.N_2)
+
+    def __getitem__(self, idx):
+        return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
+
+    def __len__(self):
+        return len(self.train_data)

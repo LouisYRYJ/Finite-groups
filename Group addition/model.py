@@ -9,6 +9,8 @@ class MLP(t.nn.Module):
         self.linear = t.nn.Linear(params.embed_dim * 2, params.hidden_size, bias=True)
         if params.activation == "gelu":
             self.activation = t.nn.GELU()
+        if params.activation == "relu":
+            self.activation == t.nn.ReLU()
         self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=True)
 
     def forward(self, a, b):

@@ -1,0 +1,67 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Traceback (most recent call last):                     | 897/20000 [01:45<1:06:38,  4.78it/s]
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 150, in <module>
+    train(
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 118, in train
+    losses_test, accuracies_test = test_loss(model, params)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 79, in test_loss
+    labels_group_2 = group_2(test_labels_x, test_labels_y)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/groups_data.py", line 39, in group_2
+    return convert_to_index(product, N_1, N_2)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/groups_data.py", line 5, in convert_to_index
+    def convert_to_index(x, N_1=7, N_2=2):
+KeyboardInterrupt

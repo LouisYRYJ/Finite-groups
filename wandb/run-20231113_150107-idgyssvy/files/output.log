@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 151, in <module>
+    train(
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 104, in train
+    train_loader = DataLoader(
+                   ^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 351, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/utils/data/sampler.py", line 106, in __init__
+    if not isinstance(self.num_samples, int) or self.num_samples <= 0:
+                      ^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/utils/data/sampler.py", line 114, in num_samples
+    return len(self.data_source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/utils/data/dataset.py", line 301, in __len__
+    return len(self.indices)
+           ^^^^^^^^^^^^^^^^^
+TypeError: object of type 'function' has no len()
