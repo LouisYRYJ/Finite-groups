@@ -31,18 +31,11 @@ def group_2(i, j, N_1=7, N_2=2):
     """Non-split product (Z/N_1Z x Z/N_1Z) x' Z/N_2Z"""
     g_1 = convert_to_tuple(i, N_1, N_2)
     g_2 = convert_to_tuple(j, N_1, N_2)
-    if g_1[2] == 0:
-        product = (
-            (g_1[0] + g_2[0]) % N_1,
-            (g_1[1] + g_2[1]) % N_1,
-            (g_1[2] + g_2[2]) % N_2,
-        )
-    else:
-        product = (
-            (g_1[0] + g_2[1]) % N_1,
-            (g_1[1] + g_2[0]) % N_1,
-            (g_1[2] + g_2[2]) % N_2,
-        )
+    product = (
+        (g_1[0] + g_2[0] * (1 - g_2[2]) + g_2[1] * g_2[2]) % N_1,
+        (g_1[1] + g_2[1] * (1 - g_2[2]) + g_2[0] * g_2[2]) % N_1,
+        (g_1[2] + g_2[2]) % N_2,
+    )
     return convert_to_index(product, N_1, N_2)
 
 

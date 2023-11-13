@@ -20,7 +20,7 @@ class Parameters:
     N: int = N_1 * N_1 * N_2
     embed_dim: int = 16
     hidden_size: int = 64
-    num_epoch: int = 100
+    num_epoch: int = 20000
     batch_size: int = 256
     activation: str = "gelu"
     checkpoint_every: int = 5
@@ -62,8 +62,8 @@ def get_accuracy(logits, labels):
 
 def test_loss(model, params):
     """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
-    test_labels_x = [num for num in range(params.N) for _ in range(params.N)]
-    test_labels_y = [num % params.N for num in range(params.N * params.N)]
+    test_labels_x = t.tensor([num for num in range(params.N) for _ in range(params.N)])
+    test_labels_y = t.tensor([num % params.N for num in range(params.N * params.N)])
 
     logits = model(test_labels_x, test_labels_y)
 
@@ -97,20 +97,15 @@ def train(model, train_data, params, optimizer):
         dataset=train_data,
         batch_size=params.batch_size,
         shuffle=True,
-        drop_last=True,
+        drop_last=False,
     )
     criterion = t.nn.CrossEntropyLoss()
-
+    average_loss_training = 0
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
-            if (
-                params.checkpoint_every is not None
-                and epoch % params.checkpoint_every == 0
-            ):
-                model.save(os.path.join(wandb.run.dir, f"Model_{epoch}"))
 
-            average_loss_training = average_loss_training / (params.max_step_per_epoch)
+            average_loss_training = average_loss_training / (params.max_steps_per_epoch)
 
             losses_test, accuracies_test = test_loss(model, params)
             wandb.log({"Loss G_1": losses_test[0], "Loss G_2": losses_test[1]})
@@ -118,17 +113,19 @@ def train(model, train_data, params, optimizer):
                 {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
             )
             wandb.log({"Training loss": average_loss_training})
+
+            average_loss_training = 0
         for x, y, z in train_loader:
             model.train()
             optimizer.zero_grad()
             output = model(x, y)
             loss = criterion(output, z)
-            average_loss_training += loss.item()  # divide by 5488/256
+            average_loss_training += loss.item()
             loss.backward()
             optimizer.step()
 
-            progress_bar.update()
-            progress_bar.set_description(f"Epoch {epoch+1}, loss: {loss:.3f}")
+            """progress_bar.update()
+            progress_bar.set_description(f"Epoch {epoch+1}, loss: {loss:.3f}")"""
 
     wandb.finish()
 
@@ -145,3 +142,11 @@ if __name__ == "__main__":
         params=ExperimentsParameters,
         optimizer=optimizer,
     )
+
+
+"""            if (
+                params.checkpoint_every is not None
+                and epoch % params.checkpoint_every == 0
+            ):
+                model.save(os.path.join(wandb.run.dir, f"Model_{epoch}"))
+"""
