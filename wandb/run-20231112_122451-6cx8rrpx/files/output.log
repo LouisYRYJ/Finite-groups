@@ -1,8 +1,0 @@
-  0%|                                                                                  | 0/100 [00:00<?, ?it/s]
-Traceback (most recent call last):                                                     | 0/100 [00:00<?, ?it/s]
-  File "/Users/lj20/Finite groups/Group addition/train.py", line 139, in <module>
-    train(
-  File "/Users/lj20/Finite groups/Group addition/train.py", line 108, in train
-    average_loss_training = average_loss_training / (params.max_step_per_epoch)
-                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'Parameters' object has no attribute 'max_step_per_epoch'

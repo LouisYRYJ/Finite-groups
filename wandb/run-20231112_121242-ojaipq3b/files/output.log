@@ -1,8 +1,0 @@
-  0%|                                                                                  | 0/100 [00:00<?, ?it/s]
-Traceback (most recent call last):                                                     | 0/100 [00:00<?, ?it/s]
-  File "/Users/lj20/Finite groups/Group addition/train.py", line 143, in <module>
-    train(
-  File "/Users/lj20/Finite groups/Group addition/train.py", line 109, in train
-    is not None & epoch % params.checkpoint_every
-           ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-TypeError: unsupported operand type(s) for &: 'NoneType' and 'int'
