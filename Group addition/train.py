@@ -25,7 +25,7 @@ class Parameters:
     activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 1
+    train_frac: float = 0.4
     weight_decay: float = 0.0002
     lr: float = 0.01
     optimizer: str = "adam"  # adam or sgd
@@ -99,6 +99,7 @@ def train(model, train_data, params):
             "Added points": (params.add_points_group1, params.add_points_group2),
             "Train frac": params.train_frac,
             "Weight decay": params.weight_decay,
+            "Learning rate": params.lr,
         },
     )
 

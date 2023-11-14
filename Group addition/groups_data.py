@@ -80,8 +80,6 @@ class GroupData(Dataset):
             self.group2_only, params.add_points_group2
         )  # add points from G_1 exclusively
 
-        self.train_data.append((50, 1, group_1(50, 1)))
-
     def __getitem__(self, idx):
         return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
 
