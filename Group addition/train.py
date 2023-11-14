@@ -8,7 +8,7 @@ import random
 from model import MLP
 import wandb
 from dataclasses import dataclass
-from groups_data import GroupData
+from groups_data import GroupData, group_1, group_2
 import copy
 from datetime import datetime
 
@@ -22,11 +22,11 @@ class Parameters:
     hidden_size: int = 128
     num_epoch: int = 20000
     batch_size: int = 256
-    activation: str = "gelu"  # gelu or relu
+    activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.1
-    weight_decay: float = 0.0001
+    train_frac: float = 1
+    weight_decay: float = 0.0002
     lr: float = 0.01
     optimizer: str = "adam"  # adam or sgd
     data_group1: bool = False  # training data G_1 only
@@ -89,12 +89,16 @@ def train(model, train_data, params):
     current_day = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
         project="Grokking ambiguous data",
-        name=f"experiment_{current_day}_group1",
+        name=f"experiment_{current_day}",
         config={
             "Epochs": params.num_epoch,
             "Cardinality": params.N,
             "Embedded dimension": params.embed_dim,
             "Hidden dimension": params.hidden_size,
+            "Training": (params.data_group1, params.data_group2),
+            "Added points": (params.add_points_group1, params.add_points_group2),
+            "Train frac": params.train_frac,
+            "Weight decay": params.weight_decay,
         },
     )
 
@@ -145,7 +149,6 @@ def train(model, train_data, params):
 
 
 random.seed(42)
-# Creating DataLoader object
 
 
 def random_indices(full_dataset, params):
@@ -159,6 +162,9 @@ if __name__ == "__main__":
 
     Group_Dataset = GroupData(ExperimentsParameters)
 
+    Training_Set = t.utils.data.Subset(
+        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
+    )
     model = MLP(ExperimentsParameters)
 
     train(model=model, train_data=Training_Set, params=ExperimentsParameters)
@@ -170,7 +176,3 @@ if __name__ == "__main__":
             ):
                 model.save(os.path.join(wandb.run.dir, f"Model_{epoch}"))
 """
-
-"""    Training_Set = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
-    )"""

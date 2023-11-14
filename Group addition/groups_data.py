@@ -64,13 +64,13 @@ class GroupData(Dataset):
             item for item in self.group2_list if item not in self.group1_list
         ]
 
-        if params.data_group1 == True and params.data_group2 == False:
+        if (params.data_group1 == True) and (params.data_group2 == False):
             self.train_data = self.group1_list
-        if params.data_group2 == True and params.data_group1 == False:
+        elif (params.data_group2 == True) and (params.data_group1 == False):
             self.train_data = self.group2_list
         else:
             self.train_data = [
-                i for i, j in zip(self.list_1, self.list_2) if i == j
+                i for i, j in zip(self.group1_list, self.group2_list) if i == j
             ]  # intersection of G_1 and G_2
 
         self.train_data = self.train_data + random.sample(
@@ -79,6 +79,8 @@ class GroupData(Dataset):
         self.train_data = self.train_data + random.sample(
             self.group2_only, params.add_points_group2
         )  # add points from G_1 exclusively
+
+        self.train_data.append((50, 1, group_1(50, 1)))
 
     def __getitem__(self, idx):
         return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
