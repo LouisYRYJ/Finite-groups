@@ -1,0 +1,45 @@
+{
+    "os": "macOS-14.1.1-x86_64-i386-64bit",
+    "python": "3.11.3",
+    "heartbeatAt": "2023-11-13T14:44:06.141899",
+    "startedAt": "2023-11-13T14:44:05.462600",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/Users/lj20/Finite groups/Group addition/train.py",
+    "codePathLocal": "Group addition/train.py",
+    "codePath": "Group addition/train.py",
+    "git": {
+        "remote": "https://github.com/LouisYRYJ/Finite-groups.git",
+        "commit": "cdd79c3900c43f22cd377045c7402ddcf169dc3a"
+    },
+    "email": "louis.yousif@yahoo.de",
+    "root": "/Users/lj20/Finite groups",
+    "host": "ma-lj20",
+    "username": "lj20",
+    "executable": "/Users/lj20/Finite groups/.venv/bin/python",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 1400,
+        "min": 1400,
+        "max": 1400
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1400,
+            "min": 1400,
+            "max": 1400
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 112.70698928833008,
+            "used": 9.221080780029297
+        }
+    },
+    "memory": {
+        "total": 8.0
+    }
+}

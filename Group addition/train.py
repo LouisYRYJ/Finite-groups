@@ -8,7 +8,7 @@ import random
 from model import MLP
 import wandb
 from dataclasses import dataclass
-from groups_data import IntersectionData, group_1, group_2, Group_1_Data
+from groups_data import GroupData
 import copy
 from datetime import datetime
 
@@ -22,23 +22,17 @@ class Parameters:
     hidden_size: int = 128
     num_epoch: int = 20000
     batch_size: int = 256
-    activation: str = "gelu"
+    activation: str = "gelu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.4
-    weight_decay: float = 0.0002
+    train_frac: float = 0.1
+    weight_decay: float = 0.0001
     lr: float = 0.01
-    optimizer: str = "sgd"
-
-
-random.seed(42)
-# Creating DataLoader object
-
-
-def random_indices(full_dataset, params):
-    num_indices = int(len(full_dataset) * params.train_frac)
-    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
-    return picked_indices
+    optimizer: str = "adam"  # adam or sgd
+    data_group1: bool = False  # training data G_1 only
+    data_group2: bool = False  # training data G_2 only
+    add_points_group1: int = 0  # add points from G_1 only
+    add_points_group2: int = 0  # add points from G_2 only
 
 
 def loss_fn(logits, labels):
@@ -150,16 +144,24 @@ def train(model, train_data, params):
     wandb.finish()
 
 
+random.seed(42)
+# Creating DataLoader object
+
+
+def random_indices(full_dataset, params):
+    num_indices = int(len(full_dataset) * params.train_frac)
+    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
+    return picked_indices
+
+
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
-    IntersectionDataSet = IntersectionData(ExperimentsParameters)
-    Group_1_Dataset = Group_1_Data(ExperimentsParameters)
-    Group_1_Training = t.utils.data.Subset(
-        Group_1_Dataset, random_indices(Group_1_Dataset, ExperimentsParameters)
-    )
+
+    Group_Dataset = GroupData(ExperimentsParameters)
+
     model = MLP(ExperimentsParameters)
 
-    train(model=model, train_data=Group_1_Training, params=ExperimentsParameters)
+    train(model=model, train_data=Training_Set, params=ExperimentsParameters)
 
 
 """            if (
@@ -168,3 +170,7 @@ if __name__ == "__main__":
             ):
                 model.save(os.path.join(wandb.run.dir, f"Model_{epoch}"))
 """
+
+"""    Training_Set = t.utils.data.Subset(
+        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
+    )"""

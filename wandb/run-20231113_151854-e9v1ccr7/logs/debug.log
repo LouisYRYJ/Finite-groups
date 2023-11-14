@@ -25,3 +25,4 @@ config: {'Epochs': 20000, 'Cardinality': 98, 'Embedded dimension': 256, 'Hidden 
 2023-11-13 15:18:56,694 INFO    MainThread:11459 [wandb_run.py:_redirect():2119] Wrapping output streams.
 2023-11-13 15:18:56,694 INFO    MainThread:11459 [wandb_run.py:_redirect():2144] Redirects installed.
 2023-11-13 15:18:56,695 INFO    MainThread:11459 [wandb_init.py:init():845] run started, returning control to user process
+2023-11-13 15:30:48,284 WARNING MsgRouterThr:11459 [router.py:message_loop():77] message_loop has been closed

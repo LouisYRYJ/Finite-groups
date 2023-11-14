@@ -1,0 +1,94 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Traceback (most recent call last):                     | 919/20000 [02:29<3:21:04,  1.58it/s]
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 168, in <module>
+    train(
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 141, in train
+    output = model(x, y)
+             ^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/model.py", line 22, in forward
+    out = self.Umbedding(hidden)
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/linear.py", line 114, in forward
+    return F.linear(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

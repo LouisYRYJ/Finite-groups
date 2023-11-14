@@ -1,0 +1,102 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Traceback (most recent call last):                                         | 992/20000 [02:42<25:52, 12.25it/s]
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 173, in <module>
+    train(model=model, train_data=IntersectionDataSet, params=ExperimentsParameters)
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 132, in train
+    losses_test, accuracies_test = test_loss(model, params)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 80, in test_loss
+    logits = model(test_labels_x, test_labels_y)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/model.py", line 21, in forward
+    hidden = self.activation(hidden)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 685, in forward
+    return F.gelu(input, approximate=self.approximate)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

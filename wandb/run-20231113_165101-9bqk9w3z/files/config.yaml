@@ -1,0 +1,39 @@
+wandb_version: 1
+
+Epochs:
+  desc: null
+  value: 20000
+Cardinality:
+  desc: null
+  value: 98
+Embedded dimension:
+  desc: null
+  value: 50
+Hidden dimension:
+  desc: null
+  value: 128
+_wandb:
+  desc: null
+  value:
+    python_version: 3.11.3
+    cli_version: 0.15.12
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1699890661.034744
+    t:
+      1:
+      - 1
+      - 55
+      2:
+      - 1
+      - 55
+      3:
+      - 13
+      - 16
+      - 23
+      4: 3.11.3
+      5: 0.15.12
+      8:
+      - 5
+      13: darwin-x86_64

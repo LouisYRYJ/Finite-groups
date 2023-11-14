@@ -1,0 +1,62 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Traceback (most recent call last):                     | 509/20000 [01:44<7:02:15,  1.30s/it]
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 168, in <module>
+    train(
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 144, in train
+    loss.backward()
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/_tensor.py", line 487, in backward
+    torch.autograd.backward(
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/autograd/__init__.py", line 200, in backward
+    Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt

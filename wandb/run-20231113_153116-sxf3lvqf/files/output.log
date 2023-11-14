@@ -1,0 +1,70 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Traceback (most recent call last):                      | 1593/20000 [01:30<16:06, 19.04it/s]
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 162, in <module>
+    train(model=model, train_data=Group_1_Training, params=ExperimentsParameters)
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 131, in train
+    losses_test, accuracies_test = test_loss(model, params)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/train.py", line 79, in test_loss
+    logits = model(test_labels_x, test_labels_y)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/Group addition/model.py", line 17, in forward
+    x1 = self.Embedding_left(a)
+         ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/modules/sparse.py", line 162, in forward
+    return F.embedding(
+           ^^^^^^^^^^^^
+  File "/Users/lj20/Finite groups/.venv/lib/python3.11/site-packages/torch/nn/functional.py", line 2210, in embedding
+    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
