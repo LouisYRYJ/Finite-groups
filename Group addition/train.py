@@ -20,8 +20,8 @@ class Parameters:
     N: int = N_1 * N_1 * N_2
     embed_dim: int = 16
     hidden_size: int = 64
-    num_epoch: int = 2000
-    batch_size: int = 256
+    num_epoch: int = 5000
+    batch_size: int = 512
     activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
@@ -32,8 +32,8 @@ class Parameters:
     beta_2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = False  # training data G_1 only
-    data_group2: bool = False  # training data G_2 only
+    data_group1: bool = False  # training data G_1
+    data_group2: bool = False  # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
 
@@ -96,6 +96,7 @@ def train(model, train_data, params):
         name=f"experiment_{current_day}",
         config={
             "Epochs": params.num_epoch,
+            "Batch size": params.batch_size,
             "Cardinality": params.N,
             "Embedded dimension": params.embed_dim,
             "Hidden dimension": params.hidden_size,
@@ -110,7 +111,7 @@ def train(model, train_data, params):
 
     train_loader = DataLoader(
         dataset=train_data,
-        batch_size=params.batch_size,
+        batch_size=len(train_data),
         shuffle=True,
         drop_last=False,
     )
