@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 import devinterp
 import random
-from model import MLP
+from model import MLP, MLP2
 import wandb
 from dataclasses import dataclass
 from groups_data import GroupData, group_1, group_2
@@ -18,17 +18,20 @@ class Parameters:
     N_1: int = 7
     N_2: int = 2
     N: int = N_1 * N_1 * N_2
-    embed_dim: int = 50
-    hidden_size: int = 128
-    num_epoch: int = 20000
+    embed_dim: int = 16
+    hidden_size: int = 64
+    num_epoch: int = 2000
     batch_size: int = 256
     activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.4
+    train_frac: float = 1
     weight_decay: float = 0.0002
     lr: float = 0.01
-    optimizer: str = "adam"  # adam or sgd
+    beta_1: int = 0.9
+    beta_2: int = 0.98
+    warmup_steps = 0
+    optimizer: str = "adam"  # adamw or adam or sgd
     data_group1: bool = False  # training data G_1 only
     data_group2: bool = False  # training data G_2 only
     add_points_group1: int = 0  # add points from G_1 only
@@ -47,6 +50,7 @@ def loss_fn(logits, labels):
         float: cross entropy loss
     """
     log_probs = logits.log_softmax(dim=-1)
+    distribution_labels = None
     correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
     return -correct_log_probs.mean()
 
@@ -100,6 +104,7 @@ def train(model, train_data, params):
             "Train frac": params.train_frac,
             "Weight decay": params.weight_decay,
             "Learning rate": params.lr,
+            "Warm up steps": params.warmup_steps,
         },
     )
 
@@ -112,15 +117,23 @@ def train(model, train_data, params):
 
     criterion = t.nn.CrossEntropyLoss()
     if params.optimizer == "sgd":
-        optimizer = t.optim.SGD(model.parameters(), lr=ExperimentsParameters.lr)
+        optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
     if params.optimizer == "adam":
         optimizer = t.optim.Adam(
             model.parameters(),
-            weight_decay=ExperimentsParameters.weight_decay,
-            lr=ExperimentsParameters.lr,
+            weight_decay=params.weight_decay,
+            lr=params.lr,
         )
-    average_loss_training = 0
+    if params.optimizer == "adamw":
+        optimizer = t.optim.AdamW(
+            model.parameters(),
+            weight_decay=params.weight_decay,
+            lr=params.lr,
+            betas=[params.beta_1, params.beta_2],
+        )
 
+    average_loss_training = 0
+    step = 0
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
@@ -135,6 +148,14 @@ def train(model, train_data, params):
             wandb.log({"Training loss": average_loss_training})
             average_loss_training = 0
         for x, y, z in train_loader:
+            global_step = epoch * len(train_data) + step
+            if global_step < params.warmup_steps:
+                lr = global_step * params.lr / float(params.warmup_steps)
+            else:
+                lr = params.lr
+            for g in optimizer.param_groups:
+                g["lr"] = lr
+
             model.train()
             optimizer.zero_grad()
             output = model(x, y)
@@ -142,7 +163,7 @@ def train(model, train_data, params):
             average_loss_training += loss.item()
             loss.backward()
             optimizer.step()
-
+            step += 1
             """progress_bar.update()
             progress_bar.set_description(f"Epoch {epoch+1}, loss: {loss:.3f}")"""
 
@@ -166,7 +187,7 @@ if __name__ == "__main__":
     Training_Set = t.utils.data.Subset(
         Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
     )
-    model = MLP(ExperimentsParameters)
+    model = MLP2(ExperimentsParameters)
 
     train(model=model, train_data=Training_Set, params=ExperimentsParameters)
 
