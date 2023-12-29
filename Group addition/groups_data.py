@@ -1,61 +1,61 @@
 from torch.utils.data import Dataset
 import torch as t
 import random
+from dataclasses import dataclass
 
 
-def convert_to_index(x, N_1=7, N_2=2):
-    """Convert tuple Z/N_1Z x Z/N_1Z x Z/N_2Z to sequence (0,1,...,N_1*N_1*N_2 - 1)"""
-    return x[0] + N_1 * x[1] + N_1 * N_1 * x[2]
+def twisted_group(group, automorphism=lambda x: x):
+    """Constructs semidirect product of groups with Z/2Z using the given automorphism"""
+    group_cardinality = group.size(dim=0)
+    new_cardinality = group_cardinality * 2
+    new_group = t.zeros((new_cardinality, new_cardinality), dtype=t.int64)
+
+    for i in range(new_cardinality):
+        for j in range(new_cardinality):
+            if i < group_cardinality and j < group_cardinality:
+                new_group[i, j] = group[i, j]
+
+            if i < group_cardinality and j >= group_cardinality:
+                new_group[i, j] = group[i, j - group_cardinality] + group_cardinality
+
+            if i >= group_cardinality and j < group_cardinality:
+                new_group[i, j] = (
+                    group[i - group_cardinality, automorphism(j) % group_cardinality]
+                    + group_cardinality
+                )
+
+            if i >= group_cardinality and j >= group_cardinality:
+                new_group[i, j] = group[
+                    i - group_cardinality,
+                    automorphism(j - group_cardinality) % group_cardinality,
+                ]
+
+    return new_group
 
 
-def convert_to_tuple(x, N_1=7, N_2=2):
-    """Convert sequence (0,1,...,N_1*N_1*N_2 - 1) to tuple Z/N_1Z x Z/N_1Z x Z/N_2Z"""
-    a = x % N_1
-    b = ((x - a) // N_1) % N_1
-    c = ((x - a - N_1 * b) // (N_1 * N_1)) % N_2
-    return (a, b, c)
-
-
-def group_1(i, j, N_1=7, N_2=2):
-    """Commutative group  Z/N_1Z x Z/N_1Z x Z/N_2Z"""
-    g_1 = convert_to_tuple(i, N_1, N_2)
-    g_2 = convert_to_tuple(j, N_1, N_2)
-    product = (
-        (g_1[0] + g_2[0]) % N_1,
-        (g_1[1] + g_2[1]) % N_1,
-        (g_1[2] + g_2[2]) % N_2,
-    )
-    return convert_to_index(product, N_1, N_2)
-
-
-def group_2(i, j, N_1=7, N_2=2):
-    """Non-split product (Z/N_1Z x Z/N_1Z) x' Z/N_2Z"""
-    g_1 = convert_to_tuple(i, N_1, N_2)
-    g_2 = convert_to_tuple(j, N_1, N_2)
-    product = (
-        (g_1[0] + g_2[0] * (1 - g_1[2]) + g_2[1] * g_1[2]) % N_1,
-        (g_1[1] + g_2[1] * (1 - g_1[2]) + g_2[0] * g_1[2]) % N_1,
-        (g_1[2] + g_2[2]) % N_2,
-    )
-    return convert_to_index(product, N_1, N_2)
-
-
-def multiplication_table(multiplication, N_1=7, N_2=2):
-    list_of_multiplications = []
-    cardinality = N_1 * N_1 * N_2
-    for i in range(cardinality):
-        for j in range(cardinality):
-            list_of_multiplications.append((i, j, multiplication(i, j, N_1, N_2)))
-    return list_of_multiplications
+def cyclic(params):
+    cyclic_group = t.zeros((params.N_1, params.N_1), dtype=t.int64)
+    for i in range(params.N_1):
+        for j in range(params.N_1):
+            cyclic_group[i, j] = (i + j) % params.N_1
+    return cyclic_group
 
 
 class GroupData(Dataset):
     def __init__(self, params):
-        self.N_1 = params.N_1
-        self.N_2 = params.N_2
+        self.group1 = twisted_group(cyclic(params))
+        self.group2 = twisted_group(cyclic(params), lambda x: (params.N_1 // 2 + 1) * x)
+        self.group1_list = [
+            (i, j, self.group1[i, j].item())
+            for i in range(self.group1.size(0))
+            for j in range(self.group1.size(1))
+        ]
 
-        self.group1_list = multiplication_table(group_1, self.N_1, self.N_2)
-        self.group2_list = multiplication_table(group_2, self.N_1, self.N_2)
+        self.group2_list = [
+            (i, j, self.group2[i, j].item())
+            for i in range(self.group2.size(0))
+            for j in range(self.group2.size(1))
+        ]
 
         self.group1_only = [
             item for item in self.group1_list if item not in self.group2_list
@@ -81,7 +81,9 @@ class GroupData(Dataset):
         )  # add points from G_1 exclusively
 
     def __getitem__(self, idx):
-        return self.train_data[idx][0], self.train_data[idx][1], self.train_data[idx][2]
+        return [self.train_data[idx][0], self.train_data[idx][1]], self.train_data[idx][
+            2
+        ]
 
     def __len__(self):
         return len(self.train_data)
