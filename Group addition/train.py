@@ -20,8 +20,9 @@ class Parameters:
     N: int = N_1 * 2
     embed_dim: int = 32
     hidden_size: int = 64
-    num_epoch: int = 2000
+    num_epoch: int = 1000
     batch_size: int = 512
+    max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
     max_steps_per_epoch: int = N * N // batch_size
@@ -68,25 +69,12 @@ def get_accuracy(logits, labels):
     return ((logits.argmax(-1) == labels).sum() / len(labels)).item()
 
 
-def group_1(i, j, params):
-    g_1 = (i % params.N, (i - i % params.N) // params.N)
-    g_2 = (j % params.N, (i - i % params.N) // params.N)
-    product = (
-        (g_1[0] + g_2[0]) % params.N,
-        (g_1[1] + g_2[1]) % 2,
-    )
-    return product[0] + params.N * product[1]
-
-
 def test_loss(model, params, Group_Dataset):
     """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
     test_labels_x = t.tensor([num for num in range(params.N) for _ in range(params.N)])
     test_labels_y = t.tensor([num % params.N for num in range(params.N * params.N)])
 
     logits = model([test_labels_x, test_labels_y])
-
-    labels_group_test = group_1(test_labels_x, test_labels_y, params)
-
     labels_group_1 = rearrange(Group_Dataset.group1, "a b-> (a b)")
     labels_group_2 = rearrange(Group_Dataset.group2, "a b-> (a b)")
 
@@ -99,12 +87,18 @@ def test_loss(model, params, Group_Dataset):
     return (loss_group_1, loss_group_2), (accuracy_group_1, accuracy_group_2)
 
 
-def train(model, train_data, params):
+def random_indices(full_dataset, params):
+    num_indices = int(len(full_dataset) * params.train_frac)
+    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
+    return picked_indices
+
+
+def train(model, params):
     progress_bar = tqdm(total=params.num_epoch * params.max_steps_per_epoch)
-    current_day = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
         project="Grokking ambiguous data",
-        name=f"experiment_{current_day}",
+        name=f"experiment_{current_time}",
         config={
             "Epochs": params.num_epoch,
             "Batch size": params.batch_size,
@@ -119,10 +113,19 @@ def train(model, train_data, params):
             "Warm up steps": params.warmup_steps,
         },
     )
+    Group_Dataset = GroupData(params=params)
+
+    train_data = t.utils.data.Subset(
+        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
+    )
+    if params.max_batch == True:
+        batch_size = len(train_data)
+    else:
+        batch_size = params.batch_size
 
     train_loader = DataLoader(
         dataset=train_data,
-        batch_size=len(train_data),
+        batch_size=batch_size,
         shuffle=True,
         drop_last=False,
     )
@@ -185,24 +188,12 @@ def train(model, train_data, params):
 random.seed(42)
 
 
-def random_indices(full_dataset, params):
-    num_indices = int(len(full_dataset) * params.train_frac)
-    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
-    return picked_indices
-
-
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
 
-    Group_Dataset = GroupData(ExperimentsParameters)
-
-    Training_Set = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
-    )
-
-    for _ in range(10):
+    for _ in range(1):
         model = MLP2(ExperimentsParameters)
-        train(model=model, train_data=Training_Set, params=ExperimentsParameters)
+        train(model=model, params=ExperimentsParameters)
 
 
 """            if (
