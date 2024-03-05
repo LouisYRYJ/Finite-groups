@@ -3,7 +3,6 @@ import os
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
-import devinterp
 import random
 from einops import rearrange
 from model import MLP, MLP2
@@ -13,6 +12,8 @@ from groups_data import GroupData
 import copy
 from datetime import datetime
 
+from model_viz import plot_indicator_table, model_table
+
 
 @dataclass
 class Parameters:
@@ -20,8 +21,8 @@ class Parameters:
     N: int = N_1 * 2
     embed_dim: int = 32
     hidden_size: int = 64
-    num_epoch: int = 1000
-    batch_size: int = 512
+    num_epoch: int = 150
+    batch_size: int = 2
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     checkpoint_every: int = 5
@@ -33,7 +34,7 @@ class Parameters:
     beta_2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = True  # training data G_1
+    data_group1: bool = False  # training data G_1
     data_group2: bool = True  # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
@@ -94,9 +95,9 @@ def random_indices(full_dataset, params):
 
 
 def train(model, params):
-    progress_bar = tqdm(total=params.num_epoch * params.max_steps_per_epoch)
     current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
+        mode="disabled",
         project="Grokking ambiguous data",
         name=f"experiment_{current_time}",
         config={
@@ -149,6 +150,7 @@ def train(model, params):
 
     average_loss_training = 0
     step = 0
+
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
@@ -179,8 +181,18 @@ def train(model, params):
             loss.backward()
             optimizer.step()
             step += 1
+
             """progress_bar.update()
             progress_bar.set_description(f"Epoch {epoch+1}, loss: {loss:.3f}")"""
+
+    plot_indicator_table(
+        model=model,
+        epoch=epoch,
+        params=params,
+        group_1=Group_Dataset.group1,
+        group_2=Group_Dataset.group2,
+        save=True,
+    )
 
     wandb.finish()
 
