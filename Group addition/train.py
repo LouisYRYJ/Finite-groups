@@ -12,7 +12,7 @@ from groups_data import GroupData
 import copy
 from datetime import datetime
 
-from model_viz import plot_indicator_table, model_table
+from model_viz import plot_indicator_table, plot_gif
 
 
 @dataclass
@@ -21,7 +21,7 @@ class Parameters:
     N: int = N_1 * 2
     embed_dim: int = 32
     hidden_size: int = 64
-    num_epoch: int = 150
+    num_epoch: int = 1000
     batch_size: int = 2
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
@@ -34,7 +34,7 @@ class Parameters:
     beta_2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = False  # training data G_1
+    data_group1: bool = True  # training data G_1
     data_group2: bool = True  # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
@@ -150,8 +150,20 @@ def train(model, params):
 
     average_loss_training = 0
     step = 0
+    list_of_figures = []
 
     for epoch in tqdm(range(params.num_epoch)):
+
+        list_of_figures.append(
+            plot_indicator_table(
+                model=model,
+                epoch=epoch,
+                params=params,
+                group_1=Group_Dataset.group1,
+                group_2=Group_Dataset.group2,
+                save=False,
+            )
+        )
         with t.no_grad():
             model.eval()
 
@@ -164,6 +176,7 @@ def train(model, params):
             )
             wandb.log({"Training loss": average_loss_training})
             average_loss_training = 0
+
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -193,6 +206,7 @@ def train(model, params):
         group_2=Group_Dataset.group2,
         save=True,
     )
+    plot_gif(list_of_figures, frame_duration=0.01)
 
     wandb.finish()
 

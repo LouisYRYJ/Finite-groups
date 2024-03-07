@@ -40,7 +40,6 @@ def indicator_table(model, params, group_1, group_2):
                 indicator[i][j] += 1
             if z[i][j] == group_2[i][j]:
                 indicator[i][j] += 2
-    print(indicator)
     return indicator
 
 
@@ -93,14 +92,12 @@ def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
     )
 
     if save == True:
-        fig.write_html("plot_{}.html".format(epoch))
+        fig.write_html("./Group addition/plots/plot_{}.html".format(epoch))
     return fig
 
 
 def plot_gif(list_of_figures, frame_duration=0.01):
-
-    list_of_figures
-    gif_filename = "your_animation.gif"
+    gif_filename = "./Group addition/plots/your_animation.gif"
     scale_factor = 0.5
 
     with imageio.get_writer(gif_filename, mode="I", duration=frame_duration) as writer:
