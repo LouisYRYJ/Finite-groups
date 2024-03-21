@@ -37,8 +37,10 @@ class MLP2(t.nn.Module):
         self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=True)
 
     def forward(self, a):
-        x1 = self.Embedding_left(a[0])
-        x2 = self.Embedding_right(a[1])
+
+        a_1, a_2 = a[:, 0], a[:, 1]
+        x1 = self.Embedding_left(a_1)
+        x2 = self.Embedding_right(a_2)
         hidden_x1 = self.linear_left(x1)
         hidden_x2 = self.linear_right(x2)
         hidden_sum = hidden_x1 + hidden_x2

@@ -81,9 +81,10 @@ class GroupData(Dataset):
         )  # add points from G_1 exclusively
 
     def __getitem__(self, idx):
-        return [self.train_data[idx][0], self.train_data[idx][1]], self.train_data[idx][
-            2
-        ]
+        return (
+            t.tensor([self.train_data[idx][0], self.train_data[idx][1]]),
+            self.train_data[idx][2],
+        )
 
     def __len__(self):
         return len(self.train_data)

@@ -16,7 +16,8 @@ def model_table(model, params):
         )
         test_labels_y = t.tensor([num % params.N for num in range(params.N * params.N)])
 
-        logits = model([test_labels_x, test_labels_y])  # shape N^2 x N
+        test_labels = t.stack((test_labels_x, test_labels_y), dim=1)
+        logits = model(test_labels)  # shape N^2 x N
 
         max_prob_entry = t.argmax(logits, dim=-1).squeeze(-1)  # shape N^2 x 1
 
@@ -96,8 +97,8 @@ def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
     return fig
 
 
-def plot_gif(list_of_figures, frame_duration=0.01):
-    gif_filename = "./Group addition/plots/your_animation.gif"
+def plot_gif(list_of_figures, file_name, frame_duration=0.01):
+    gif_filename = "./Group addition/plots/" + file_name + ".gif"
     scale_factor = 0.5
 
     with imageio.get_writer(gif_filename, mode="I", duration=frame_duration) as writer:
