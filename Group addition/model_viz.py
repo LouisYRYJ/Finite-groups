@@ -5,6 +5,7 @@ import imageio.v2 as imageio  # For creating the GIF file
 import time
 from einops import rearrange
 import torch as t
+import matplotlib.pyplot as plt
 
 
 def model_table(model, params):
@@ -63,7 +64,7 @@ def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
     fig = go.Figure(
         data=go.Heatmap(
             z=indicator_table(model, params, group_1=group_1, group_2=group_2).tolist(),
-            showscale=True,
+            showscale=False,
             colorscale=custom_colorscale,
             x=col_labels,
             y=row_labels,
@@ -117,3 +118,27 @@ def plot_gif(list_of_figures, file_name, frame_duration=0.01):
 
             # Append this buffer directly using append_data()
             writer.append_data(imageio.imread(img_buffer))
+
+
+def viz_compare_llc(llc_values, compared_values, label_compared, save: bool, file_name):
+    fig, ax1 = plt.subplots()
+
+    ax1.plot(compared_values, label=label_compared, color="r")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel(label_compared, color="r")  # Label for y-axis of List 2
+    ax1.tick_params(axis="y", labelcolor="r")  # Color y-axis labels to match line color
+
+    ax2 = ax1.twinx()
+    # Plot the second list on this new secondary axis (ax2)
+    ax2.plot(llc_values, label="Local learning coefficient", color="g")
+    ax2.set_ylabel("Local learning coefficient", color="g")
+    ax2.tick_params(axis="y", labelcolor="g")  # Color y-axis labels to match line color
+
+    plt.title("Local learning coefficient over training run")
+    if save:
+        plt.savefig(file_name)
+
+    fig.tight_layout()
+    plt.show()
+
+    return

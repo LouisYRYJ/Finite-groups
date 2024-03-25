@@ -1,7 +1,6 @@
 from torch.utils.data import Dataset
 import torch as t
 import random
-from dataclasses import dataclass
 
 
 def twisted_group(group, automorphism=lambda x: x):

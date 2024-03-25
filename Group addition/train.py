@@ -22,12 +22,12 @@ class Parameters:
     N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
     hidden_size: int = 64
-    num_epoch: int = 1000
+    num_epoch: int = 2000
     batch_size: int = 1000
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.4
+    train_frac: float = 1
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta_1: int = 0.9
