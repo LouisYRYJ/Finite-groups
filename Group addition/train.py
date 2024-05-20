@@ -4,16 +4,16 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import random
-from model import MLP, MLP2
+from model import MLP2
 import wandb
 import dataclasses
 from dataclasses import dataclass
 from groups_data import GroupData
 from datetime import datetime
-from model_viz import plot_indicator_table, plot_gif
 from utils import test_loss, random_indices
 import json
-from itertools import islice
+
+device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 
 @dataclass
@@ -27,7 +27,7 @@ class Parameters:
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 1
+    train_frac: float = 0.4
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta_1: int = 0.9
@@ -35,7 +35,7 @@ class Parameters:
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     data_group1: bool = True  # training data G_1
-    data_group2: bool = True  # training data G_2
+    data_group2: bool = False  # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
@@ -65,6 +65,7 @@ def train(model, params):
     train_data = t.utils.data.Subset(
         Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
     )
+
     if params.max_batch == True:
         batch_size = len(train_data)
     else:
@@ -127,7 +128,9 @@ def train(model, params):
 
             average_loss_training = average_loss_training / (params.max_steps_per_epoch)
 
-            losses_test, accuracies_test = test_loss(model, params, Group_Dataset)
+            losses_test, accuracies_test = test_loss(
+                model, params, Group_Dataset, device
+            )
             wandb.log({"Loss G_1": losses_test[0], "Loss G_2": losses_test[1]})
             wandb.log(
                 {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
@@ -146,8 +149,8 @@ def train(model, params):
 
             model.train()
             optimizer.zero_grad()
-            output = model(x)
-            loss = criterion(output, z)
+            output = model(x.to(device))
+            loss = criterion(output, z.to(device))
             average_loss_training += loss.item()
             loss.backward()
             optimizer.step()
@@ -164,7 +167,6 @@ random.seed(42)
 
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
-
     for _ in range(1):
-        model = MLP2(ExperimentsParameters)
+        model = MLP2(ExperimentsParameters).to(device)
         train(model=model, params=ExperimentsParameters)

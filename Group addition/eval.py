@@ -1,4 +1,9 @@
-from model_viz import plot_indicator_table, plot_gif, viz_compare_llc
+from model_viz import (
+    plot_indicator_table,
+    plot_gif,
+    viz_compare_llc,
+    fourier_basis_embedding,
+)
 import matplotlib.pyplot as plt
 import json
 import os
@@ -6,87 +11,35 @@ from train import Parameters
 from model import MLP2
 import torch as t
 from groups_data import GroupData
-from utils import random_indices, test_loss
+from utils import random_indices, test_loss, measure_llc
 from torch.utils.data import DataLoader
-
-from devinterp.optim.sgld import SGLD
-from devinterp.slt import estimate_learning_coeff_with_summary, estimate_learning_coeff
 import re
-import plotly.express as px
+from dataclasses import dataclass
 
 
-directory = "models/model_2024-03-21 16:34:23"
-
-with open(directory + "/params.json", "r") as f:
-    json_str = f.read()
-    params = Parameters(**json.loads(json_str))
-
-
-Group_Dataset = GroupData(params=params)
-model_template = MLP2(params=params)
-list_of_figures = []
+@dataclass
+class EvalParameters:
+    LLC_measure: bool = True
+    other_measure: bool = True
+    create_gif: bool = False
+    fourier: bool = False
+    frequency: int = 1
+    start: int = 0
 
 
-train_data = t.utils.data.Subset(Group_Dataset, random_indices(Group_Dataset, params))
-if params.max_batch == True:
-    batch_size = len(train_data)
-else:
-    batch_size = params.batch_size
+def create_gif(list_of_figures, model, params, index):
+    Group_Dataset = GroupData(params=params)
 
-train_loader = DataLoader(
-    dataset=train_data,
-    batch_size=batch_size,
-    shuffle=True,
-    drop_last=False,
-)
-
-criterion = t.nn.CrossEntropyLoss()
-
-
-def measure_llc(model, summary: bool):
-    train_data = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, params)
-    )
-    if params.max_batch == True:
-        batch_size = len(train_data)
-    else:
-        batch_size = params.batch_size
-
-    train_loader = DataLoader(
-        dataset=train_data,
-        batch_size=batch_size,
-        shuffle=True,
-        drop_last=False,
-    )
-
-    if summary:
-        learning_coeff_stats = estimate_learning_coeff_with_summary(
-            model,
-            loader=train_loader,
-            criterion=t.nn.CrossEntropyLoss(),
-            sampling_method=SGLD,
-            optimizer_kwargs=dict(lr=5e-4, localization=100.0),
-            num_chains=5,  # How many independent chains to run
-            num_draws=300,  # How many samples to draw per chain
-            num_burnin_steps=0,  # How many samples to discard at the beginning of each chain
-            num_steps_bw_draws=1,  # How many steps to take between each sample
-            online=True,
+    list_of_figures.append(
+        plot_indicator_table(
+            model=model,
+            epoch=index,
+            params=params,
+            group_1=Group_Dataset.group1,
+            group_2=Group_Dataset.group2,
+            save=False,
         )
-
-    else:
-        learning_coeff_stats = estimate_learning_coeff(
-            model,
-            loader=train_loader,
-            criterion=t.nn.CrossEntropyLoss(),
-            sampling_method=SGLD,
-            optimizer_kwargs=dict(lr=2e-5, localization=100.0),
-            num_chains=5,  # How many independent chains to run
-            num_draws=300,  # How many samples to draw per chain
-            num_burnin_steps=0,  # How many samples to discard at the beginning of each chain
-            num_steps_bw_draws=1,  # How many steps to take between each sample
-        )
-
-    return learning_coeff_stats
+    )
 
 
 def get_number_from_filename(filename):
@@ -96,53 +49,87 @@ def get_number_from_filename(filename):
     return -1
 
 
-def create_gif(list_of_figures, model):
-    list_of_figures.append(
-        plot_indicator_table(
-            model=model,
-            epoch=int(filename[:-3]) * params.checkpoint,
-            params=params,
-            group_1=Group_Dataset.group1,
-            group_2=Group_Dataset.group2,
-            save=False,
-        )
-    )
+def load_model_paths(path):
+
+    model_paths = []
+
+    with open(path + "/params.json", "r") as f:
+        json_str = f.read()
+        params = Parameters(**json.loads(json_str))
+
+    for root, dirs, files in os.walk(path):
+        for filename in sorted(files, key=get_number_from_filename)[1:]:
+            model_paths.append(os.path.join(root, filename))
+
+    return model_paths, params
 
 
-estimates = []
-accuracy_G1 = []
-for root, dirs, files in os.walk(directory):
-    for filename in sorted(files, key=get_number_from_filename)[1:]:
-        if get_number_from_filename(filename) % 20 == 0:
-            file_path = os.path.join(root, filename)
-            print(file_path)
-            model_template.load_state_dict(t.load(file_path))
-            model_template.eval()
-            create_gif(list_of_figures, model_template)
-            estimates.append(measure_llc(model_template, False))
-            _, accuracy = test_loss(model_template, params, Group_Dataset)
-            accuracy_G1.append(accuracy[0])
-
-
-def save_data():
-    data_to_save = {"LLC estimate": estimates, "Accuracy G_1": accuracy_G1}
+def save_measurements(estimates, compared_values, path):
+    # fix this other values business
+    data_to_save = {"LLC estimate": estimates, "Accuracy G_1": compared_values}
 
     json_data = json.dumps(data_to_save, indent=4)
 
-    filename = "llc_estimates_grokking_12.json"
+    filename = path + "/measurements.json"
 
     with open(filename, "w") as f:
         f.write(json_data)
 
-    print(f"Data has been saved to {filename}")
+
+def evaluate(list_of_model_paths, params, parent_path, evalparams):
+    Group_Dataset = GroupData(params=params)
+
+    estimates = []
+    accuracy_G1 = []
+    list_of_figures = []
+    model = MLP2(params=params)
+
+    if not os.path.exists("evals/" + os.path.basename(parent_path)):
+        os.mkdir("evals/" + os.path.basename(parent_path))
+
+    evals_path = "evals/" + os.path.basename(parent_path)
+
+    for i, model_path in enumerate(list_of_model_paths[evalparams.start :]):
+        if i % evalparams.frequency == 0:
+            model.load_state_dict(t.load(model_path))
+            model.eval()
+
+            if evalparams.LLC_measure:
+                estimates.append(measure_llc(model, params, summary=False))
+
+            if evalparams.other_measure:
+                _, accuracy = test_loss(model, params, Group_Dataset, device="cpu")
+                accuracy_G1.append(accuracy[0])
+
+            if evalparams.create_gif:
+                create_gif(list_of_figures, model, params, i)
+
+    save_measurements(estimates, accuracy_G1, evals_path)
+
+    viz_compare_llc(
+        estimates,
+        accuracy_G1,
+        "Accuracy G1",
+        save=True,
+        filename=evals_path,
+    )
+
+    if evalparams.fourier == True:
+        fourier_basis_embedding(model, params, evals_path)
+
+    if evalparams.create_gif:
+        plot_gif(list_of_figures=list_of_figures, frame_duration=0.01, path=evals_path)
 
 
-viz_compare_llc(
-    estimates,
-    accuracy_G1,
-    "Accuracy G1",
-    save=True,
-    file_name="llc_grokking_12.png",
-)
+if __name__ == "__main__":
 
-plot_gif(list_of_figures=list_of_figures, frame_duration=0.01, file_name="Grokking_1")
+    directory = "models/model_2024-03-21 16:36:03"
+
+    if not os.path.exists("evals"):
+        os.mkdir("evals")
+
+    models, params = load_model_paths(directory)
+    evalparams = EvalParameters(
+        LLC_measure=False, start=330, frequency=10, fourier=True
+    )
+    evaluate(models, params, parent_path=directory, evalparams=evalparams)

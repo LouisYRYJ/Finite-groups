@@ -2,10 +2,12 @@ import plotly.graph_objs as go  # Import the graph objects from Plotly
 from PIL import Image  # For handling image operations
 import io  # For handling bytes data, equivalent to BytesIO
 import imageio.v2 as imageio  # For creating the GIF file
-import time
 from einops import rearrange
 import torch as t
 import matplotlib.pyplot as plt
+import plotly.express as px
+from utils import make_fourier_basis
+import os
 
 
 def model_table(model, params):
@@ -98,8 +100,8 @@ def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
     return fig
 
 
-def plot_gif(list_of_figures, file_name, frame_duration=0.01):
-    gif_filename = "./Group addition/plots/" + file_name + ".gif"
+def plot_gif(list_of_figures, path, frame_duration=0.01):
+    gif_filename = path + "multiplication_table" + ".gif"
     scale_factor = 0.5
 
     with imageio.get_writer(gif_filename, mode="I", duration=frame_duration) as writer:
@@ -120,7 +122,7 @@ def plot_gif(list_of_figures, file_name, frame_duration=0.01):
             writer.append_data(imageio.imread(img_buffer))
 
 
-def viz_compare_llc(llc_values, compared_values, label_compared, save: bool, file_name):
+def viz_compare_llc(llc_values, compared_values, label_compared, save: bool, filename):
     fig, ax1 = plt.subplots()
 
     ax1.plot(compared_values, label=label_compared, color="r")
@@ -136,9 +138,57 @@ def viz_compare_llc(llc_values, compared_values, label_compared, save: bool, fil
 
     plt.title("Local learning coefficient over training run")
     if save:
-        plt.savefig(file_name)
+        plt.savefig(filename + "/measurements.png")
 
     fig.tight_layout()
     plt.show()
 
     return
+
+
+def line(x, title, path, y=None, hover=None, xaxis="", yaxis="", **kwargs):
+    if type(y) == t.Tensor:
+        y = y.detach().numpy()
+    if type(x) == t.Tensor:
+        x = x.detach().numpy()
+    fig = px.line(x, y=y, hover_name=hover, **kwargs)
+    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis)
+    fig.show()
+
+    fig.write_image(path + "/" + title + ".svg")
+
+
+def fourier_basis_embedding(model, params, path):
+
+    fourier_basis = make_fourier_basis(params=params)
+
+    W_E_right = model.Embedding_left.weight
+    W_E_left = model.Embedding_right.weight
+    W_L = model.Umbedding.weight
+
+    line(
+        ((fourier_basis[0] @ W_E_left).T).pow(2).sum(0),
+        hover=fourier_basis[1],
+        path=path,
+        title="Norm of embedding of each Fourier Component, left",
+        xaxis="Fourier Component",
+        yaxis="Norm",
+    )
+
+    line(
+        ((fourier_basis[0] @ W_E_right).T).pow(2).sum(0),
+        hover=fourier_basis[1],
+        path=path,
+        title="Norm of embedding of each Fourier Component, right",
+        xaxis="Fourier Component",
+        yaxis="Norm",
+    )
+
+    line(
+        ((fourier_basis[0] @ W_L).T).pow(2).sum(0),
+        hover=fourier_basis[1],
+        path=path,
+        title="Norm of unembedding of each Fourier Component",
+        xaxis="Fourier Component",
+        yaxis="Norm",
+    )
