@@ -1,5 +1,6 @@
-wandb
+wandb_
 *.DS_Store
 plots
 evals
 models
+__pycache__
