@@ -44,19 +44,6 @@ class Parameters:
     checkpoint: int = 3
 
 
-params = Parameters()
-
-
-Group_Dataset = GroupData(params=params)
-
-x, y = Group_Dataset[3]
-
-
-model = MLP3(params=params)
-
-print(x)
-
-
 def train(model, params):
     current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
@@ -183,5 +170,5 @@ random.seed(42)
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
     for _ in range(1):
-        model = MLP3(ExperimentsParameters).to(device)
+        model = MLP2(ExperimentsParameters).to(device)
         train(model=model, params=ExperimentsParameters)
