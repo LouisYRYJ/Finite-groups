@@ -13,11 +13,14 @@ from datetime import datetime
 from utils import test_loss, random_indices
 import json
 
+os.environ["WANDB_MODE"] = "disabled"
+
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 
 @dataclass
 class Parameters:
+    instances: int = 3
     N_1: int = 48
     N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
@@ -39,6 +42,19 @@ class Parameters:
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
+
+
+params = Parameters()
+
+
+Group_Dataset = GroupData(params=params)
+
+x, y = Group_Dataset[3]
+
+
+model = MLP3(params=params)
+
+print(x)
 
 
 def train(model, params):
