@@ -3,4 +3,4 @@ wandb_
 plots
 evals
 models
-__pycache__
+__pycache__/
