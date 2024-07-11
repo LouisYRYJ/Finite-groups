@@ -4,3 +4,5 @@ plots
 evals
 models
 __pycache__/
+wandb/
+poetry.lock

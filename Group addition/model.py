@@ -54,13 +54,13 @@ class MLP3(t.nn.Module):
         super().__init__()
         self.Embedding_left = t.nn.Embedding(params.N, params.embed_dim)
         self.Embedding_right = t.nn.Embedding(params.N, params.embed_dim)
-        self.linear = t.nn.Linear(params.embed_dim, params.hidden_size, bias=True)
+        self.linear = t.nn.Linear(params.embed_dim, params.hidden_size, bias=False)
 
         if params.activation == "gelu":
             self.activation = t.nn.GELU()
         if params.activation == "relu":
             self.activation = t.nn.ReLU()
-        self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=True)
+        self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=False)
 
     def forward(self, a):
 

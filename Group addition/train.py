@@ -20,33 +20,36 @@ device = t.device("cuda" if t.cuda.is_available() else "cpu")
 class Parameters:
     N_1: int = 48
     N: int = N_1 * 2  # cardinality of group
-    embed_dim: int = 32
-    hidden_size: int = 64
+    embed_dim: int = 128
+    hidden_size: int = 128
     num_epoch: int = 2000
     batch_size: int = 64
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 1
+    train_frac: float = 0.4
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta_1: int = 0.9
-    beta_2: int = 0.98
+    beta_2: int = 0.999
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = True  # training data G_1
-    data_group2: bool = True  # training data G_2
+    data_group1: bool = False# training data G_1
+    data_group2: bool = True # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
+    random: bool = False
 
 
 def train(model, params):
     current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+    project = "Dev Group (Specification vs determination)" if not params.random else "Random labels"
+    subname = 'G2'
     wandb.init(
         entity="neural_fate",
-        project="Dev Group (Specification vs determination)",
-        name=f"experiment_{current_time}",
+        project=project,
+        name=f"experiment_{current_time}_{subname}",
         config={
             "Epochs": params.num_epoch,
             "Batch size": params.batch_size,
@@ -166,6 +169,6 @@ random.seed(42)
 
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
-    for _ in range(1):
+    for _ in range(5):
         model = MLP3(ExperimentsParameters).to(device)
         train(model=model, params=ExperimentsParameters)
