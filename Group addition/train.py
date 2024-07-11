@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import random
-from model import MLP2
+from model import MLP2, MLP3
 import wandb
 import dataclasses
 from dataclasses import dataclass
@@ -18,16 +18,16 @@ device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 @dataclass
 class Parameters:
-    N_1: int = 50
+    N_1: int = 48
     N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
     hidden_size: int = 64
     num_epoch: int = 2000
-    batch_size: int = 1000
+    batch_size: int = 64
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.4
+    train_frac: float = 1
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta_1: int = 0.9
@@ -35,7 +35,7 @@ class Parameters:
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     data_group1: bool = True  # training data G_1
-    data_group2: bool = False  # training data G_2
+    data_group2: bool = True  # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
@@ -44,7 +44,8 @@ class Parameters:
 def train(model, params):
     current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     wandb.init(
-        project="Grokking ambiguous data",
+        entity="neural_fate",
+        project="Dev Group (Specification vs determination)",
         name=f"experiment_{current_time}",
         config={
             "Epochs": params.num_epoch,
@@ -63,7 +64,7 @@ def train(model, params):
     Group_Dataset = GroupData(params=params)
 
     train_data = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, ExperimentsParameters)
+        Group_Dataset, random_indices(Group_Dataset, params)
     )
 
     if params.max_batch == True:
@@ -112,8 +113,15 @@ def train(model, params):
             f.write(json_str)
 
     checkpoint_no = 0
-
+    # wandb.watch(model, criterion=criterion, log="all", log_freq=10)
     for epoch in tqdm(range(params.num_epoch)):
+
+        losses_test, accuracies_test = test_loss(model, params, Group_Dataset, device)
+        wandb.log({"Loss G_1": losses_test[0], "Loss G_2": losses_test[1]})
+        wandb.log(
+            {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
+        )
+        wandb.log({"Training loss": average_loss_training})
 
         with t.no_grad():
             model.eval()
@@ -127,15 +135,6 @@ def train(model, params):
                 checkpoint_no += 1
 
             average_loss_training = average_loss_training / (params.max_steps_per_epoch)
-
-            losses_test, accuracies_test = test_loss(
-                model, params, Group_Dataset, device
-            )
-            wandb.log({"Loss G_1": losses_test[0], "Loss G_2": losses_test[1]})
-            wandb.log(
-                {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
-            )
-            wandb.log({"Training loss": average_loss_training})
 
             average_loss_training = 0
         for x, z in train_loader:
@@ -168,5 +167,5 @@ random.seed(42)
 if __name__ == "__main__":
     ExperimentsParameters = Parameters()
     for _ in range(1):
-        model = MLP2(ExperimentsParameters).to(device)
+        model = MLP3(ExperimentsParameters).to(device)
         train(model=model, params=ExperimentsParameters)

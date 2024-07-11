@@ -19,8 +19,8 @@ from dataclasses import dataclass
 
 @dataclass
 class EvalParameters:
-    LLC_measure: bool = True
-    other_measure: bool = True
+    LLC_measure: bool = False
+    other_measure: bool = False
     create_gif: bool = False
     fourier: bool = False
     frequency: int = 1
@@ -37,7 +37,7 @@ def create_gif(list_of_figures, model, params, index):
             params=params,
             group_1=Group_Dataset.group1,
             group_2=Group_Dataset.group2,
-            save=False,
+            save=True,
         )
     )
 
@@ -123,7 +123,7 @@ def evaluate(list_of_model_paths, params, parent_path, evalparams):
 
 if __name__ == "__main__":
 
-    directory = "models/model_2024-03-21 16:36:03"
+    directory = "models/model_2024-07-09 16:56:04"
 
     if not os.path.exists("evals"):
         os.mkdir("evals")
