@@ -111,11 +111,15 @@ def train(model, params):
     checkpoint_no = 0
     # wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
+    epoch_train_acc = t.zeros(params.instances, device=device)
+
+    # TODO: fix train loss and acc and move into a log function
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
             loss_dict = test_loss(model, params.N, group_dataset)
             loss_dict["epoch_train_loss"] = epoch_train_loss
+            loss_dict["epoch_train_acc"] = epoch_train_acc
             log_dict = {}
             for inst in range(params.instances):
                 for k in loss_dict:
@@ -133,6 +137,7 @@ def train(model, params):
                 checkpoint_no += 1
 
         epoch_train_loss.zero_()
+        epoch_train_acc.zero_()
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -146,14 +151,17 @@ def train(model, params):
             optimizer.zero_grad()
             output = model(x.to(device))
             loss = get_cross_entropy(output, z.to(device))
-            epoch_train_loss += loss
-            for inst in range(params.instances):
-                log_dict[f"train_loss_{inst:03d}"] = loss[inst].item()
+            acc = get_accuracy(output, z.to(device))
+            epoch_train_loss += loss * z.shape[0]  # batch_size
+            epoch_train_acc += acc * z.shape[0]
+
             loss.sum().backward()
             optimizer.step()
             step += 1
-        
-        epoch_train_loss /= len(train_loader)
+
+        epoch_train_loss /= len(train_data)
+        epoch_train_acc /= len(train_data)
+
         wandb.log(log_dict)
     wandb.finish()
     print(os.path.abspath(directory_path))
