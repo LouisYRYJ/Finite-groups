@@ -163,7 +163,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     for k in params.__dict__:
         parser.add_argument(f'--{k}')
-    parser.add_argument('name')
     args = parser.parse_args()
     arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
