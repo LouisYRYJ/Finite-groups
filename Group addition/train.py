@@ -14,7 +14,7 @@ from utils import test_loss, random_indices, autocast
 import json
 import argparse
 
-os.environ["WANDB_MODE"] = "disabled"
+# os.environ["WANDB_MODE"] = "disabled"
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -34,8 +34,8 @@ class Parameters:
     train_frac: float = 0.4
     weight_decay: float = 0.0002
     lr: float = 0.01
-    beta_1: int = 0.9
-    beta_2: int = 0.98
+    beta1: int = 0.9
+    beta2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     data_group1: bool = True# training data G_1
@@ -44,18 +44,15 @@ class Parameters:
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
     random: bool = False
-    name: str = ''
+    name: str = 'experiment'
 
 
 def train(model, params):
-    current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-    name = f'ex_{current_time}'
-    if params.name:
-        name += f'_{name}'
+    current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
         entity="neural_fate",
         project="Dev Group (Specification vs determination)",
-        name=name,
+        name=f'{params.name}_{current_time}',
         config=params.__dict__,
     )
     Group_Dataset = GroupData(params=params)
@@ -90,7 +87,7 @@ def train(model, params):
             model.parameters(),
             weight_decay=params.weight_decay,
             lr=params.lr,
-            betas=[params.beta_1, params.beta_2],
+            betas=[params.beta1, params.beta2],
         )
 
     average_loss_training = 0
@@ -167,8 +164,9 @@ if __name__ == "__main__":
     for k in params.__dict__:
         parser.add_argument(f'--{k}')
     parser.add_argument('name')
+    args = parser.parse_args()
     arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
     for _ in range(1):
         model = MLP2(params).to(device)
-        train(model=model, params=ExperimentsParameters)
+        train(model=model, params=params)
