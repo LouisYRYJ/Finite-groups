@@ -1,22 +1,24 @@
 import torch as t
 import torch.nn.functional as F
-from jaxtyping import Float, Int
+from torch import nn
+from jaxtyping import Float, Int, jaxtyped
 from typing import Optional, Callable, Union, List, Tuple
 import einops
 import numpy as np
+from beartype import beartype
 
 
-class MLP(t.nn.Module):
+class MLP(nn.Module):
     def __init__(self, params):
         super().__init__()
-        self.Embedding_left = t.nn.Embedding(params.N, params.embed_dim)
-        self.Embedding_right = t.nn.Embedding(params.N, params.embed_dim)
-        self.linear = t.nn.Linear(params.embed_dim * 2, params.hidden_size, bias=True)
+        self.Embedding_left = nn.Embedding(params.N, params.embed_dim)
+        self.Embedding_right = nn.Embedding(params.N, params.embed_dim)
+        self.linear = nn.Linear(params.embed_dim * 2, params.hidden_size, bias=True)
         if params.activation == "gelu":
-            self.activation = t.nn.GELU()
+            self.activation = nn.GELU()
         if params.activation == "relu":
-            self.activation = t.nn.ReLU()
-        self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=True)
+            self.activation = nn.ReLU()
+        self.Umbedding = nn.Linear(params.hidden_size, params.N, bias=True)
 
     def forward(self, a):
         x1 = self.Embedding_left(a[0])
@@ -28,20 +30,20 @@ class MLP(t.nn.Module):
         return out
 
 
-class MLP2(t.nn.Module):
+class MLP2(nn.Module):
     def __init__(self, params):
         super().__init__()
-        self.Embedding_left = t.nn.Embedding(params.N, params.embed_dim)
-        self.Embedding_right = t.nn.Embedding(params.N, params.embed_dim)
-        self.linear_left = t.nn.Linear(params.embed_dim, params.hidden_size, bias=False)
-        self.linear_right = t.nn.Linear(
+        self.Embedding_left = nn.Embedding(params.N, params.embed_dim)
+        self.Embedding_right = nn.Embedding(params.N, params.embed_dim)
+        self.linear_left = nn.Linear(params.embed_dim, params.hidden_size, bias=False)
+        self.linear_right = nn.Linear(
             params.embed_dim, params.hidden_size, bias=False
         )
         if params.activation == "gelu":
-            self.activation = t.nn.GELU()
+            self.activation = nn.GELU()
         if params.activation == "relu":
-            self.activation = t.nn.ReLU()
-        self.Umbedding = t.nn.Linear(params.hidden_size, params.N, bias=False)
+            self.activation = nn.ReLU()
+        self.Umbedding = nn.Linear(params.hidden_size, params.N, bias=False)
 
     def forward(self, a):
 
@@ -57,16 +59,16 @@ class MLP2(t.nn.Module):
 
 
 def custom_xavier(dims):
-
-    return t.nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[1] + dims[2])))
+    # Assumes shape [..., fan_in, fan_out]
+    return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2] + dims[-1])))
 
 
 def custom_kaiming(dims):
+    # Assumes shape [..., fan_in, fan_out]
+    return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2])))
 
-    return t.nn.Parameter(t.randn(dims) * np.sqrt(2.0))
 
-
-class MLP3(t.nn.Module):
+class MLP3(nn.Module):
     def __init__(self, params):
         super().__init__()
         self.params = params
@@ -92,18 +94,21 @@ class MLP3(t.nn.Module):
         )
 
         if params.activation == "gelu":
-            self.activation = t.nn.GELU()
+            self.activation = nn.GELU()
         if params.activation == "relu":
-            self.activation = t.nn.ReLU()
+            self.activation = nn.ReLU()
 
     # entries =2
-    def forward(self, a: Int[t.Tensor, "batch_size entries"]):
+    @jaxtyped(typechecker=beartype)
+    def forward(
+        self, a: Int[t.Tensor, "batch_size entries"]
+    ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
         a_instances = einops.repeat(
             a, " batch_size entries -> batch_size n entries", n=self.params.instances
         )  # batch_size instances entries
 
-        a_1, a_2 = a_instances[:, :, 0], a_instances[:, :, 1]
+        a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
 
         a_1_onehot = F.one_hot(a_1, num_classes=self.params.N).float()
         a_2_onehot = F.one_hot(a_2, num_classes=self.params.N).float()

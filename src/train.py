@@ -10,19 +10,19 @@ import dataclasses
 from dataclasses import dataclass
 from groups_data import GroupData
 from datetime import datetime
-from utils import test_loss, random_indices, autocast
+from utils import get_cross_entropy, test_loss, random_indices, autocast
 import json
 import argparse
+import einops
 
 # os.environ["WANDB_MODE"] = "disabled"
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
-
 @dataclass
 class Parameters:
     instances: int = 3
-    N_1: int = 48
+    N_1: int = 24
     N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
     hidden_size: int = 64
@@ -31,7 +31,7 @@ class Parameters:
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 0.4
+    train_frac: float = 1.0
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta1: int = 0.9
@@ -55,10 +55,10 @@ def train(model, params):
         name=f'{params.name}_{current_time}',
         config=params.__dict__,
     )
-    Group_Dataset = GroupData(params=params)
+    group_dataset = GroupData(params=params)
 
     train_data = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, params)
+        group_dataset, random_indices(group_dataset, params)
     )
 
     if params.max_batch == True:
@@ -73,7 +73,6 @@ def train(model, params):
         drop_last=False,
     )
 
-    criterion = t.nn.CrossEntropyLoss()
     if params.optimizer == "sgd":
         optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
     if params.optimizer == "adam":
@@ -90,7 +89,6 @@ def train(model, params):
             betas=[params.beta1, params.beta2],
         )
 
-    average_loss_training = 0
     step = 0
     list_of_figures = []
 
@@ -98,7 +96,7 @@ def train(model, params):
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
 
-        directory_path = f"models/model_{current_time}"
+        directory_path = f"models/{params.name}_{current_time}"
         if not os.path.exists(directory_path):
             os.makedirs(directory_path)
 
@@ -107,30 +105,22 @@ def train(model, params):
             f.write(json_str)
 
     checkpoint_no = 0
-    # wandb.watch(model, criterion=criterion, log="all", log_freq=10)
+    wandb.watch(model, log="all", log_freq=10)
     for epoch in tqdm(range(params.num_epoch)):
-
-        losses_test, accuracies_test = test_loss(model, params, Group_Dataset, device)
-        wandb.log({"Loss G_1": losses_test[0], "Loss G_2": losses_test[1]})
-        wandb.log(
-            {"Accuracy G_1": accuracies_test[0], "Accuracy G_2": accuracies_test[1]}
-        )
-        wandb.log({"Training loss": average_loss_training})
-
         with t.no_grad():
             model.eval()
-
+            losses_test, accuracies_test = test_loss(model, params.N, group_dataset)
+            for inst in range(params.instances):
+                for group in range(2):
+                    wandb.log({f"G_{group+1}_loss_{inst}": losses_test[group][inst].item()})
+                    wandb.log({f"G_{group+1}_accuracy_{inst}": accuracies_test[group][inst].item()})
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
-
                 t.save(
                     model.state_dict(),
                     directory_path + f"/{checkpoint_no}.pt",
                 )
                 checkpoint_no += 1
 
-            average_loss_training = average_loss_training / (params.max_steps_per_epoch)
-
-            average_loss_training = 0
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -143,19 +133,14 @@ def train(model, params):
             model.train()
             optimizer.zero_grad()
             output = model(x.to(device))
-            loss = criterion(output, z.to(device))
-            average_loss_training += loss.item()
-            loss.backward()
+            loss = get_cross_entropy(output, z.to(device))
+            for inst in range(params.instances):
+                wandb.log({f'train_loss_{inst}': loss[inst].item()})
+            loss.sum().backward()
             optimizer.step()
             step += 1
 
-            """progress_bar.update()
-            progress_bar.set_description(f"Epoch {epoch+1}, loss: {loss:.3f}")"""
-
     wandb.finish()
-
-
-random.seed(42)
 
 
 if __name__ == "__main__":
@@ -166,6 +151,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
-    for _ in range(1):
-        model = MLP2(params).to(device)
-        train(model=model, params=params)
+    model = MLP3(params).to(device)
+    train(model=model, params=params)

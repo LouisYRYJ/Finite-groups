@@ -1,59 +1,81 @@
-from einops import rearrange
+import einops
 import random
 import torch as t
+from torch import nn
+import torch.nn.functional as F
 from devinterp.optim.sgld import SGLD
 from devinterp.slt import estimate_learning_coeff_with_summary, estimate_learning_coeff
 from groups_data import GroupData
 from torch.utils.data import DataLoader
+from jaxtyping import Int, Float, jaxtyped
+from beartype import beartype
+from groups_data import GroupData
+from typing import Tuple
+from itertools import product
+
+device = t.device("cuda" if t.cuda.is_available() else "cpu")
+
+# Easier to just use F.cross_entropy
+# def loss_fn(logits, labels):
+# """
+# Compute cross entropy loss.
+
+# Args:
+# logits (Tensor): (batch, group.order) tensor of logits
+# labels (Tensor): (batch) tensor of labels
+
+# Returns:
+# float: cross entropy loss
+# """
+# log_probs = logits.log_softmax(dim=-1)
+# correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
+# return -correct_log_probs.mean()
 
 
-def loss_fn(logits, labels):
+@jaxtyped(typechecker=beartype)
+def get_accuracy(
+    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
+) -> Float[t.Tensor, "instance"]:
     """
-    Compute cross entropy loss.
-
-    Args:
-        logits (Tensor): (batch, group.order) tensor of logits
-        labels (Tensor): (batch) tensor of labels
-
-    Returns:
-        float: cross entropy loss
+    Compute instance-wise accuracy of model.
     """
-    log_probs = logits.log_softmax(dim=-1)
-    correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
-    return -correct_log_probs.mean()
+    instances = logits.shape[1]
+    labels = einops.repeat(labels, "batch -> batch n", n=instances)
+    return (logits.argmax(-1) == labels).sum(dim=0) / labels.shape[0]
 
-
-def get_accuracy(logits, labels):
+@jaxtyped(typechecker=beartype)
+def get_cross_entropy(
+    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
+) -> Float[t.Tensor, "instance"]:
     """
-    Compute accuracy of model.
-
-    Args:
-        logits (torch.tensor): (batch, group.order) tensor of logits
-        labels (torch.tensor): (batch) tensor of labels
-
-    Returns:
-        float: accuracy
+    Compute instance-wise cross entropy loss of model.
+    (Need to rearrange batch and instance to match the expected shape of F.cross_entropy)
     """
-    return ((logits.argmax(-1) == labels).sum() / len(labels)).item()
+    instances = logits.shape[1]
+    labels = einops.repeat(labels, "batch -> batch n", n=instances)
+    logits = einops.rearrange(logits, "batch instance vocab -> batch vocab instance")
+    return F.cross_entropy(logits, labels, reduction='none').mean(dim=0)
 
-
-def test_loss(model, params, Group_Dataset, device):
+@jaxtyped(typechecker=beartype)
+def test_loss(
+    model: nn.Module,
+    N: int,
+    group_dataset: GroupData,
+) -> Tuple[
+    Tuple[Float[t.Tensor, "instance"], Float[t.Tensor, "instance"]],
+    Tuple[Float[t.Tensor, "instance"], Float[t.Tensor, "instance"]],
+]:
     """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
-    test_labels_x = t.tensor(
-        [num for num in range(params.N) for _ in range(params.N)]
-    ).to(device)
-    test_labels_y = t.tensor([num % params.N for num in range(params.N * params.N)]).to(
-        device
-    )
+    test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
 
-    test_labels = t.stack((test_labels_x, test_labels_y), dim=1)
+    logits = model(test_inputs)
+    labels_group_1 = einops.rearrange(group_dataset.group1, "a b-> (a b)").to(device)
+    labels_group_2 = einops.rearrange(group_dataset.group2, "a b-> (a b)").to(device)
+    if labels_group_1.shape[0] == 47:
+        import pdb; pdb.set_trace()
 
-    logits = model(test_labels)
-    labels_group_1 = rearrange(Group_Dataset.group1, "a b-> (a b)").to(device)
-    labels_group_2 = rearrange(Group_Dataset.group2, "a b-> (a b)").to(device)
-
-    loss_group_1 = loss_fn(logits, labels_group_1)
-    loss_group_2 = loss_fn(logits, labels_group_2)
+    loss_group_1 = get_cross_entropy(logits, labels_group_1)
+    loss_group_2 = get_cross_entropy(logits, labels_group_2)
 
     accuracy_group_1 = get_accuracy(logits, labels_group_1)
     accuracy_group_2 = get_accuracy(logits, labels_group_2)
@@ -115,7 +137,7 @@ def measure_llc(model, params, summary: bool):
         learning_coeff_stats = estimate_learning_coeff_with_summary(
             model,
             loader=train_loader,
-            criterion=t.nn.CrossEntropyLoss(),
+            criterion=nn.CrossEntropyLoss(),
             sampling_method=SGLD,
             optimizer_kwargs=dict(lr=5e-4, localization=100.0),
             num_chains=5,  # How many independent chains to run
@@ -129,7 +151,7 @@ def measure_llc(model, params, summary: bool):
         learning_coeff_stats = estimate_learning_coeff(
             model,
             loader=train_loader,
-            criterion=t.nn.CrossEntropyLoss(),
+            criterion=nn.CrossEntropyLoss(),
             sampling_method=SGLD,
             optimizer_kwargs=dict(lr=2e-5, localization=100.0),
             num_chains=5,  # How many independent chains to run
@@ -139,6 +161,7 @@ def measure_llc(model, params, summary: bool):
         )
 
     return learning_coeff_stats
+
 
 def autocast(x):
     try:
