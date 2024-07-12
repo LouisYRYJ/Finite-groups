@@ -10,19 +10,21 @@ import dataclasses
 from dataclasses import dataclass
 from groups_data import GroupData
 from datetime import datetime
-from utils import get_cross_entropy, test_loss, random_indices, autocast
+from utils import *
 import json
 import argparse
 import einops
+from pprint import pprint
 
 # os.environ["WANDB_MODE"] = "disabled"
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
+
 @dataclass
 class Parameters:
     instances: int = 3
-    N_1: int = 24
+    N_1: int = 48
     N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
     hidden_size: int = 64
@@ -38,21 +40,21 @@ class Parameters:
     beta2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = True# training data G_1
-    data_group2: bool = True # training data G_2
-    add_points_group1: int = 0  # add points from G_1 only
-    add_points_group2: int = 0  # add points from G_2 only
+    data_group1: bool = True  # training data G1
+    data_group2: bool = True  # training data G2
+    add_points_group1: int = 0  # add points from G1 only
+    add_points_group2: int = 0  # add points from G2 only
     checkpoint: int = 3
     random: bool = False
-    name: str = 'experiment'
+    name: str = "experiment"
 
 
 def train(model, params):
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
         entity="neural_fate",
-        project="Dev Group (Specification vs determination)",
-        name=f'{params.name}_{current_time}',
+        project="group generalization",
+        name=f"{current_time}_{params.name}",
         config=params.__dict__,
     )
     group_dataset = GroupData(params=params)
@@ -96,9 +98,10 @@ def train(model, params):
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
 
-        directory_path = f"models/{params.name}_{current_time}"
+        directory_path = f"models/{current_time}_{params.name}"
         if not os.path.exists(directory_path):
-            os.makedirs(directory_path)
+            os.makedirs(directory_path + "/losses")
+            os.makedirs(directory_path + "/ckpts")
 
         with open(directory_path + "/params.json", "w") as f:
             json_str = json.dumps(dataclasses.asdict(params))
@@ -106,21 +109,28 @@ def train(model, params):
 
     checkpoint_no = 0
     wandb.watch(model, log="all", log_freq=10)
+    epoch_train_loss = t.zeros(params.instances)
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
-            losses_test, accuracies_test = test_loss(model, params.N, group_dataset)
+            loss_dict = test_loss(model, params.N, group_dataset)
+            loss_dict["epoch_train_loss"] = epoch_train_loss
             for inst in range(params.instances):
-                for group in range(2):
-                    wandb.log({f"G_{group+1}_loss_{inst}": losses_test[group][inst].item()})
-                    wandb.log({f"G_{group+1}_accuracy_{inst}": accuracies_test[group][inst].item()})
+                for k in loss_dict:
+                    wandb.log({f"{k}_{inst}": loss_dict[k][inst].item()})
+            g1_grokked = (loss_dict["G1_accuracy"] >= 1 - 5e-3).sum()
+            g2_grokked = (loss_dict["G2_accuracy"] >= 1 - 5e-3).sum()
+            wandb.log({"G1_grokked_count": g1_grokked.item()})
+            wandb.log({"G2_grokked_count": g2_grokked.item()})
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 t.save(
                     model.state_dict(),
-                    directory_path + f"/{checkpoint_no}.pt",
+                    directory_path + f"/ckpts/{checkpoint_no:05d}.pt",
                 )
+                t.save(loss_dict, directory_path + f"/losses/{checkpoint_no:05d}.pt")
                 checkpoint_no += 1
 
+        epoch_train_loss = t.zeros(params.instances)
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -134,22 +144,30 @@ def train(model, params):
             optimizer.zero_grad()
             output = model(x.to(device))
             loss = get_cross_entropy(output, z.to(device))
+            epoch_train_loss += loss
             for inst in range(params.instances):
-                wandb.log({f'train_loss_{inst}': loss[inst].item()})
+                wandb.log({f"train_loss_{inst}": loss[inst].item()})
             loss.sum().backward()
             optimizer.step()
             step += 1
+        epoch_train_loss /= len(train_loader)
 
     wandb.finish()
+    print("============SUMMARY STATS============")
+    traj = load_loss_trajectory(directory_path)
+    is_grokked_summary(traj, params.instances)
 
 
 if __name__ == "__main__":
     params = Parameters()
     parser = argparse.ArgumentParser()
     for k in params.__dict__:
-        parser.add_argument(f'--{k}')
+        parser.add_argument(f"--{k}")
     args = parser.parse_args()
     arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
+    # Need to update these manually...
+    params.N = params.N_1 * 2
+    params.max_steps_per_epoch = params.N * params.N // params.batch_size
     model = MLP3(params).to(device)
     train(model=model, params=params)

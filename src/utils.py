@@ -7,11 +7,12 @@ from devinterp.optim.sgld import SGLD
 from devinterp.slt import estimate_learning_coeff_with_summary, estimate_learning_coeff
 from groups_data import GroupData
 from torch.utils.data import DataLoader
-from jaxtyping import Int, Float, jaxtyped
+from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
 from groups_data import GroupData
 from typing import Tuple
 from itertools import product
+import glob
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -43,6 +44,7 @@ def get_accuracy(
     labels = einops.repeat(labels, "batch -> batch n", n=instances)
     return (logits.argmax(-1) == labels).sum(dim=0) / labels.shape[0]
 
+
 @jaxtyped(typechecker=beartype)
 def get_cross_entropy(
     logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
@@ -54,17 +56,15 @@ def get_cross_entropy(
     instances = logits.shape[1]
     labels = einops.repeat(labels, "batch -> batch n", n=instances)
     logits = einops.rearrange(logits, "batch instance vocab -> batch vocab instance")
-    return F.cross_entropy(logits, labels, reduction='none').mean(dim=0)
+    return F.cross_entropy(logits, labels, reduction="none").mean(dim=0)
+
 
 @jaxtyped(typechecker=beartype)
 def test_loss(
     model: nn.Module,
     N: int,
     group_dataset: GroupData,
-) -> Tuple[
-    Tuple[Float[t.Tensor, "instance"], Float[t.Tensor, "instance"]],
-    Tuple[Float[t.Tensor, "instance"], Float[t.Tensor, "instance"]],
-]:
+) -> dict[str, Float[t.Tensor, "instance"]]:
     """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
     test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
 
@@ -72,7 +72,9 @@ def test_loss(
     labels_group_1 = einops.rearrange(group_dataset.group1, "a b-> (a b)").to(device)
     labels_group_2 = einops.rearrange(group_dataset.group2, "a b-> (a b)").to(device)
     if labels_group_1.shape[0] == 47:
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
 
     loss_group_1 = get_cross_entropy(logits, labels_group_1)
     loss_group_2 = get_cross_entropy(logits, labels_group_2)
@@ -80,8 +82,48 @@ def test_loss(
     accuracy_group_1 = get_accuracy(logits, labels_group_1)
     accuracy_group_2 = get_accuracy(logits, labels_group_2)
 
-    return (loss_group_1, loss_group_2), (accuracy_group_1, accuracy_group_2)
+    return {
+        "G1_loss": loss_group_1,
+        "G2_loss": loss_group_2,
+        "G1_accuracy": accuracy_group_1,
+        "G2_accuracy": accuracy_group_2,
+    }
 
+
+def load_loss_trajectory(
+    save_path: str,
+) -> dict[str, Float[t.Tensor, "instance epoch"]]:
+    """Load loss trajectory from a saved file."""
+    loss_files = sorted(glob.glob(f"{save_path}/losses/*.pt"))
+    losses = [t.load(f) for f in loss_files]
+    return {k: t.stack([l[k] for l in losses], dim=1) for k in losses[0]}
+
+def is_grokked(
+    trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
+    thresh_hi: float = 1 - 5e-3,
+    thresh_med: float = 0.9,
+    thresh_lo: float = 0.8,
+) -> dict[str, Bool[t.Tensor, "instance"]]:
+    """Classifies the loss trajectory into grokked and ungrokked per instance."""
+    g1_acc = trajectory["G1_accuracy"]
+    g2_acc = trajectory["G2_accuracy"]
+    grok_dict = {
+        "G1_grokked": g1_acc[:, -1] >= thresh_hi,
+        "G2_grokked": g2_acc[:, -1] >= thresh_hi,
+        "G1_ungrokked": (g1_acc.max(dim=1).values >= thresh_med) & (g1_acc[:, -1] < thresh_lo),
+        "G2_ungrokked": (g2_acc.max(dim=1).values >= thresh_med) & (g2_acc[:, -1] < thresh_lo),
+    }
+    return grok_dict
+
+def is_grokked_summary(
+    trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
+    instances: int,
+) -> None:
+    grokked = is_grokked(trajectory)
+    for k in grokked:
+        print(
+            f"{k}: {grokked[k].sum().item()}/{instances} ({grokked[k].sum().item() / instances:.2f})"
+        )
 
 def random_indices(full_dataset, params):
     num_indices = int(len(full_dataset) * params.train_frac)

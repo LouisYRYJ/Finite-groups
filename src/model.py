@@ -95,8 +95,12 @@ class MLP3(nn.Module):
 
         if params.activation == "gelu":
             self.activation = nn.GELU()
-        if params.activation == "relu":
+        elif params.activation == "relu":
             self.activation = nn.ReLU()
+        elif params.activation == "linear":
+            self.activation = lambda x: x
+        else:
+            raise ValueError("Activation not recognized")
 
     # entries =2
     @jaxtyped(typechecker=beartype)
