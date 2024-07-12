@@ -100,26 +100,27 @@ def load_loss_trajectory(
 
 def is_grokked(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
-    thresh_hi: float = 1 - 5e-3,
-    thresh_med: float = 0.9,
-    thresh_lo: float = 0.8,
+    thresh_grok: float = 1 - 5e-3,
+    thresh_ungrok: float = 0.1,
 ) -> dict[str, Bool[t.Tensor, "instance"]]:
     """Classifies the loss trajectory into grokked and ungrokked per instance."""
     g1_acc = trajectory["G1_accuracy"]
     g2_acc = trajectory["G2_accuracy"]
     grok_dict = {
-        "G1_grokked": g1_acc[:, -1] >= thresh_hi,
-        "G2_grokked": g2_acc[:, -1] >= thresh_hi,
-        "G1_ungrokked": (g1_acc.max(dim=1).values >= thresh_med) & (g1_acc[:, -1] < thresh_lo),
-        "G2_ungrokked": (g2_acc.max(dim=1).values >= thresh_med) & (g2_acc[:, -1] < thresh_lo),
+        "G1_grokked": g1_acc[:, -1] >= thresh_grok,
+        "G2_grokked": g2_acc[:, -1] >= thresh_grok,
+        "G1_ungrokked": (g1_acc.max(dim=1).values - g1_acc[:, -1] > thresh_ungrok),
+        "G2_ungrokked": (g2_acc.max(dim=1).values - g2_acc[:, -1] > thresh_ungrok),
     }
     return grok_dict
 
 def is_grokked_summary(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
     instances: int,
+    thresh_grok: float = 1 - 5e-3,
+    thresh_ungrok: float = 0.1,
 ) -> None:
-    grokked = is_grokked(trajectory)
+    grokked = is_grokked(trajectory, thresh_grok=thresh_grok, thresh_ungrok=thresh_ungrok)
     for k in grokked:
         print(
             f"{k}: {grokked[k].sum().item()}/{instances} ({grokked[k].sum().item() / instances:.2f})"

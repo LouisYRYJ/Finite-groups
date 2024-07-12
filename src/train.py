@@ -148,10 +148,11 @@ def train(model, params):
             loss = get_cross_entropy(output, z.to(device))
             epoch_train_loss += loss
             for inst in range(params.instances):
-                log_dict[f"train_loss_{inst}"] = loss[inst].item()
+                log_dict[f"train_loss_{inst:03d}"] = loss[inst].item()
             loss.sum().backward()
             optimizer.step()
             step += 1
+        
         epoch_train_loss /= len(train_loader)
         wandb.log(log_dict)
     wandb.finish()
