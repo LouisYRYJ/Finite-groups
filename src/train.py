@@ -108,7 +108,6 @@ def train(model, params):
             json_str = json.dumps(dataclasses.asdict(params))
             f.write(json_str)
 
-    checkpoint_no = 0
     # wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
@@ -131,10 +130,9 @@ def train(model, params):
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 t.save(
                     model.state_dict(),
-                    directory_path + f"/ckpts/{checkpoint_no:05d}.pt",
+                    directory_path + f"/ckpts/{epoch:06d}.pt",
                 )
-                t.save(loss_dict, directory_path + f"/losses/{checkpoint_no:05d}.pt")
-                checkpoint_no += 1
+                t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
 
         epoch_train_loss.zero_()
         epoch_train_acc.zero_()
