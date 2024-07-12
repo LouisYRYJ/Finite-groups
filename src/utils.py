@@ -58,6 +58,23 @@ def get_cross_entropy(
     logits = einops.rearrange(logits, "batch instance vocab -> batch vocab instance")
     return F.cross_entropy(logits, labels, reduction="none").mean(dim=0)
 
+@jaxtyped(typechecker=beartype)
+def get_margin(
+    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
+) -> Float[t.Tensor, "instance"]:
+    """
+    Compute instance-wise margin (correct logit minus max incorrect logit; min across batches)
+    """
+    instances = logits.shape[1]
+    label_logits = logits.gather(dim=2, index=labels.reshape(-1, 1, 1))
+    other_logits = logits.clone()
+    other_logits.scatter_(
+        dim=2,
+        index=labels.reshape(-1, 1, 1),
+        src=torch.ones_like(logits) * -np.inf
+    )
+    other_logits = torch.max(other_logits, dim=2).values
+    return torch.maximum(0, torch.min(label_logits - other_logits, dim=0))
 
 @jaxtyped(typechecker=beartype)
 def test_loss(
@@ -82,11 +99,16 @@ def test_loss(
     accuracy_group_1 = get_accuracy(logits, labels_group_1)
     accuracy_group_2 = get_accuracy(logits, labels_group_2)
 
+    margin_group_1 = get_margin(logits, labels_group_1)
+    margin_group_1 = get_margin(logits, labels_group_1)
+
     return {
         "G1_loss": loss_group_1,
         "G2_loss": loss_group_2,
         "G1_accuracy": accuracy_group_1,
         "G2_accuracy": accuracy_group_2,
+        "G1_margin": margin_group_1,
+        "G2_margin": margin_group_2,
     }
 
 
