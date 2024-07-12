@@ -15,6 +15,7 @@ import json
 import argparse
 import einops
 from pprint import pprint
+import os
 
 # os.environ["WANDB_MODE"] = "disabled"
 
@@ -108,20 +109,21 @@ def train(model, params):
             f.write(json_str)
 
     checkpoint_no = 0
-    wandb.watch(model, log="all", log_freq=10)
-    epoch_train_loss = t.zeros(params.instances)
+    # wandb.watch(model, log="all", log_freq=10)
+    epoch_train_loss = t.zeros(params.instances, device=device)
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
             loss_dict = test_loss(model, params.N, group_dataset)
             loss_dict["epoch_train_loss"] = epoch_train_loss
+            log_dict = {}
             for inst in range(params.instances):
                 for k in loss_dict:
-                    wandb.log({f"{k}_{inst}": loss_dict[k][inst].item()})
+                    log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
             g1_grokked = (loss_dict["G1_accuracy"] >= 1 - 5e-3).sum()
             g2_grokked = (loss_dict["G2_accuracy"] >= 1 - 5e-3).sum()
-            wandb.log({"G1_grokked_count": g1_grokked.item()})
-            wandb.log({"G2_grokked_count": g2_grokked.item()})
+            log_dict["G1_grokked_count"] = g1_grokked.item()
+            log_dict["G2_grokked_count"] = g2_grokked.item()
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 t.save(
                     model.state_dict(),
@@ -130,7 +132,7 @@ def train(model, params):
                 t.save(loss_dict, directory_path + f"/losses/{checkpoint_no:05d}.pt")
                 checkpoint_no += 1
 
-        epoch_train_loss = t.zeros(params.instances)
+        epoch_train_loss.zero_()
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -146,13 +148,14 @@ def train(model, params):
             loss = get_cross_entropy(output, z.to(device))
             epoch_train_loss += loss
             for inst in range(params.instances):
-                wandb.log({f"train_loss_{inst}": loss[inst].item()})
+                log_dict[f"train_loss_{inst}"] = loss[inst].item()
             loss.sum().backward()
             optimizer.step()
             step += 1
         epoch_train_loss /= len(train_loader)
-
+        wandb.log(log_dict)
     wandb.finish()
+    print(os.path.abspath(directory_path))
     print("============SUMMARY STATS============")
     traj = load_loss_trajectory(directory_path)
     is_grokked_summary(traj, params.instances)
