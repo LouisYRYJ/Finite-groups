@@ -10,8 +10,9 @@ import dataclasses
 from dataclasses import dataclass
 from groups_data import GroupData
 from datetime import datetime
-from utils import test_loss, random_indices
+from utils import test_loss, random_indices, autocast
 import json
+import argparse
 
 os.environ["WANDB_MODE"] = "disabled"
 
@@ -30,39 +31,32 @@ class Parameters:
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
     max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 1
+    train_frac: float = 0.4
     weight_decay: float = 0.0002
     lr: float = 0.01
     beta_1: int = 0.9
     beta_2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = True  # training data G_1
-    data_group2: bool = True  # training data G_2
+    data_group1: bool = True# training data G_1
+    data_group2: bool = True # training data G_2
     add_points_group1: int = 0  # add points from G_1 only
     add_points_group2: int = 0  # add points from G_2 only
     checkpoint: int = 3
+    random: bool = False
+    name: str = ''
 
 
 def train(model, params):
     current_time = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+    name = f'ex_{current_time}'
+    if params.name:
+        name += f'_{name}'
     wandb.init(
         entity="neural_fate",
         project="Dev Group (Specification vs determination)",
-        name=f"experiment_{current_time}",
-        config={
-            "Epochs": params.num_epoch,
-            "Batch size": params.batch_size,
-            "Cardinality": params.N,
-            "Embedded dimension": params.embed_dim,
-            "Hidden dimension": params.hidden_size,
-            "Training": (params.data_group1, params.data_group2),
-            "Added points": (params.add_points_group1, params.add_points_group2),
-            "Train frac": params.train_frac,
-            "Weight decay": params.weight_decay,
-            "Learning rate": params.lr,
-            "Warm up steps": params.warmup_steps,
-        },
+        name=name,
+        config=params.__dict__,
     )
     Group_Dataset = GroupData(params=params)
 
@@ -168,7 +162,13 @@ random.seed(42)
 
 
 if __name__ == "__main__":
-    ExperimentsParameters = Parameters()
+    params = Parameters()
+    parser = argparse.ArgumentParser()
+    for k in params.__dict__:
+        parser.add_argument(f'--{k}')
+    parser.add_argument('name')
+    arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
+    params.__dict__.update(arg_vars)
     for _ in range(1):
-        model = MLP2(ExperimentsParameters).to(device)
+        model = MLP2(params).to(device)
         train(model=model, params=ExperimentsParameters)

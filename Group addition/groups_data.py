@@ -39,11 +39,21 @@ def cyclic(params):
             cyclic_group[i, j] = (i + j) % params.N_1
     return cyclic_group
 
+def random_magma(params):
+    rand_magma = t.zeros((params.N, params.N), dtype=t.int64)
+    for i in range(params.N):
+        for j in range(params.N):
+            rand_magma[i, j] = random.randint(0, params.N-1)
+    return rand_magma
 
 class GroupData(Dataset):
     def __init__(self, params):
-        self.group1 = twisted_group(cyclic(params))
-        self.group2 = twisted_group(cyclic(params), lambda x: (params.N_1 // 2 + 1) * x)
+        if params.random:
+            self.group1 = random_magma(params)
+            self.group2 = random_magma(params)
+        else:
+            self.group1 = twisted_group(cyclic(params))
+            self.group2 = twisted_group(cyclic(params), lambda x: (params.N_1 // 2 + 1) * x)
         self.group1_list = [
             (i, j, self.group1[i, j].item())
             for i in range(self.group1.size(0))

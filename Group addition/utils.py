@@ -139,3 +139,13 @@ def measure_llc(model, params, summary: bool):
         )
 
     return learning_coeff_stats
+
+def autocast(x):
+    try:
+        return int(x)
+    except:
+        pass
+    try:
+        return float(x)
+    except:
+        return x
