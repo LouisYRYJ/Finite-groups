@@ -15,7 +15,8 @@ import json
 import argparse
 import einops
 from pprint import pprint
-import os
+import numpy as np
+import gc
 
 # os.environ["WANDB_MODE"] = "disabled"
 
@@ -48,9 +49,10 @@ class Parameters:
     checkpoint: int = 3
     random: bool = False
     name: str = "experiment"
-
+    seed: int = 42
 
 def train(model, params):
+    t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
         entity="neural_fate",
@@ -111,14 +113,16 @@ def train(model, params):
     # wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
+    epoch_train_margin = t.full((params.instances,), np.inf, device=device)
 
-    # TODO: fix train loss and acc and move into a log function
+    # TODO: fix train loss and acc and margin and move into a logging function
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
             loss_dict = test_loss(model, params.N, group_dataset)
             loss_dict["epoch_train_loss"] = epoch_train_loss
             loss_dict["epoch_train_acc"] = epoch_train_acc
+            loss_dict["epoch_train_margin"] = epoch_train_margin
             log_dict = {}
             for inst in range(params.instances):
                 for k in loss_dict:
@@ -136,6 +140,7 @@ def train(model, params):
 
         epoch_train_loss.zero_()
         epoch_train_acc.zero_()
+        nn.init.constant_(epoch_train_margin, np.inf)
         for x, z in train_loader:
             global_step = epoch * len(train_data) + step
             if global_step < params.warmup_steps:
@@ -147,15 +152,21 @@ def train(model, params):
 
             model.train()
             optimizer.zero_grad()
-            output = model(x.to(device))
-            loss = get_cross_entropy(output, z.to(device))
-            acc = get_accuracy(output, z.to(device))
+            x = x.to(device)
+            z = z.to(device)
+            output = model(x)
+            loss = get_cross_entropy(output, z)
+            acc = get_accuracy(output, z)
+            margin = get_margin(output, z)
             epoch_train_loss += loss * z.shape[0]  # batch_size
             epoch_train_acc += acc * z.shape[0]
+            epoch_train_margin = t.min(epoch_train_margin, margin)
 
             loss.sum().backward()
             optimizer.step()
             step += 1
+            gc.collect()
+            t.cuda.empty_cache()
 
         epoch_train_loss /= len(train_data)
         epoch_train_acc /= len(train_data)

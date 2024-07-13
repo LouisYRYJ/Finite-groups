@@ -13,6 +13,7 @@ from groups_data import GroupData
 from typing import Tuple
 from itertools import product
 import glob
+import numpy as np
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -34,6 +35,7 @@ device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 
 @jaxtyped(typechecker=beartype)
+@t.no_grad()
 def get_accuracy(
     logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
 ) -> Float[t.Tensor, "instance"]:
@@ -59,6 +61,7 @@ def get_cross_entropy(
     return F.cross_entropy(logits, labels, reduction="none").mean(dim=0)
 
 @jaxtyped(typechecker=beartype)
+@t.no_grad()
 def get_margin(
     logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
 ) -> Float[t.Tensor, "instance"]:
@@ -66,17 +69,28 @@ def get_margin(
     Compute instance-wise margin (correct logit minus max incorrect logit; min across batches)
     """
     instances = logits.shape[1]
-    label_logits = logits.gather(dim=2, index=labels.reshape(-1, 1, 1))
-    other_logits = logits.clone()
-    other_logits.scatter_(
-        dim=2,
-        index=labels.reshape(-1, 1, 1),
-        src=torch.ones_like(logits) * -np.inf
+    labels = einops.repeat(labels, "batch -> batch n", n=instances)
+    labels_onehot = F.one_hot(labels, num_classes=logits.shape[-1])
+    label_logits = einops.einsum(logits, labels_onehot.float(),
+        "batch instance vocab, batch instance vocab -> batch instance"
     )
-    other_logits = torch.max(other_logits, dim=2).values
-    return torch.maximum(0, torch.min(label_logits - other_logits, dim=0))
+    label_mask = t.where(labels_onehot > 0, -np.inf, 0)
+    other_logits = (logits + label_mask).max(dim=2).values
+    
+    # # logit values at indices corresponding to labels
+    # label_logits = logits.gather(dim=2, index=labels).squeeze(-1)
+    # other_logits = logits.clone()
+    # # set logit values at labels to -inf so we can then take max over non-labels
+    # other_logits.scatter_(
+    #     dim=2,
+    #     index=labels,
+    #     src=t.ones_like(logits) * -np.inf
+    # )
+    # other_logits = t.max(other_logits, dim=2).values
+    return t.clamp(t.min(label_logits - other_logits, dim=0).values, min=0)
 
 @jaxtyped(typechecker=beartype)
+@t.no_grad()
 def test_loss(
     model: nn.Module,
     N: int,
@@ -99,16 +113,11 @@ def test_loss(
     accuracy_group_1 = get_accuracy(logits, labels_group_1)
     accuracy_group_2 = get_accuracy(logits, labels_group_2)
 
-    margin_group_1 = get_margin(logits, labels_group_1)
-    margin_group_1 = get_margin(logits, labels_group_1)
-
     return {
         "G1_loss": loss_group_1,
         "G2_loss": loss_group_2,
         "G1_accuracy": accuracy_group_1,
         "G2_accuracy": accuracy_group_2,
-        "G1_margin": margin_group_1,
-        "G2_margin": margin_group_2,
     }
 
 
