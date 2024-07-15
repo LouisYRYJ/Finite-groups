@@ -165,8 +165,8 @@ def train(model, params):
             loss.sum().backward()
             optimizer.step()
             step += 1
-            gc.collect()
-            t.cuda.empty_cache()
+            # gc.collect()
+            # t.cuda.empty_cache()
 
         epoch_train_loss /= len(train_data)
         epoch_train_acc /= len(train_data)

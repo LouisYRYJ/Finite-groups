@@ -32,28 +32,31 @@ def twisted_group(group, automorphism=lambda x: x):
     return new_group
 
 
-def cyclic(params):
-    cyclic_group = t.zeros((params.N_1, params.N_1), dtype=t.int64)
-    for i in range(params.N_1):
-        for j in range(params.N_1):
-            cyclic_group[i, j] = (i + j) % params.N_1
+def cyclic(N):
+    cyclic_group = t.zeros((N, N), dtype=t.int64)
+    for i in range(N):
+        for j in range(N):
+            cyclic_group[i, j] = (i + j) % N
     return cyclic_group
 
-def random_magma(params):
-    rand_magma = t.zeros((params.N, params.N), dtype=t.int64)
-    for i in range(params.N):
-        for j in range(params.N):
-            rand_magma[i, j] = random.randint(0, params.N-1)
+def random_magma(N):
+    rand_magma = t.zeros((N, N), dtype=t.int64)
+    for i in range(N):
+        for j in range(N):
+            rand_magma[i, j] = random.randint(0, N-1)
     return rand_magma
 
 class GroupData(Dataset):
     def __init__(self, params):
         if params.random:
-            self.group1 = random_magma(params)
-            self.group2 = random_magma(params)
+            self.group1 = random_magma(params.N)
+            self.group2 = random_magma(params.N)
+        elif params.N_1 % 4 == 2:   # TODO: GroupData should allow specifying arbitrary families of groups, instead of hardcoded elifs.
+            self.group1 = cyclic(params.N_1 * 2)
+            self.group2 = twisted_group(cyclic(params.N_1))
         else:
-            self.group1 = twisted_group(cyclic(params))
-            self.group2 = twisted_group(cyclic(params), lambda x: (params.N_1 // 2 + 1) * x)
+            self.group1 = twisted_group(cyclic(params.N_1))
+            self.group2 = twisted_group(cyclic(params.N_1), lambda x: (params.N_1 // 2 + 1) * x)
         self.group1_list = [
             (i, j, self.group1[i, j].item())
             for i in range(self.group1.size(0))
@@ -81,6 +84,7 @@ class GroupData(Dataset):
             self.train_data = [
                 i for i, j in zip(self.group1_list, self.group2_list) if i == j
             ]  # intersection of G_1 and G_2
+            print('Intersection size:', len(self.train_data) / len(self.group1_list))
 
         self.train_data = self.train_data + random.sample(
             self.group1_only, params.add_points_group1
