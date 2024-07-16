@@ -17,6 +17,7 @@ import einops
 from pprint import pprint
 import numpy as np
 import gc
+from typing import Optional, Union
 
 # os.environ["WANDB_MODE"] = "disabled"
 
@@ -46,11 +47,15 @@ class Parameters:
         "twisted(cyclic(48), lambda x: 25 * x))",
     )
     intersect_frac: float = 1.0
-    delta_frac: tuple[float] = 0.0
+    delta_frac: Union[tuple[float], float] = 0.0
     train_frac: float = 1.0
+    save_weights: bool = False
+    load_weights: Optional[str] = None
 
 
 def train(model, group_dataset, params):
+    if params.load_weights is not None:
+        model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
@@ -124,10 +129,11 @@ def train(model, group_dataset, params):
                     (loss_dict[f"G{i}_accuracy"] >= 1 - 5e-3).sum().item()
                 )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
-                t.save(
-                    model.state_dict(),
-                    directory_path + f"/ckpts/{epoch:06d}.pt",
-                )
+                if params.save_weights:
+                    t.save(
+                        model.state_dict(),
+                        directory_path + f"/ckpts/{epoch:06d}.pt",
+                    )
                 t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
 
         epoch_train_loss.zero_()
@@ -163,6 +169,13 @@ def train(model, group_dataset, params):
 
         wandb.log(log_dict)
     wandb.finish()
+
+
+    t.save(
+        model.state_dict(),
+        directory_path + f"/ckpts/final.pt",
+    )
+    t.save(loss_dict, directory_path + f"/losses/final.pt")
 
     if checkpoint_every is not None:
         print(os.path.abspath(directory_path))
