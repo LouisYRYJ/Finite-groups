@@ -84,8 +84,8 @@ def string_to_groups(
 class GroupData(Dataset):
     def __init__(self, params):
         self.groups = string_to_groups(params.group_string)
-        num_groups = len(self.groups)
-        for i in range(1, num_groups):
+        self.num_groups = len(self.groups)
+        for i in range(1, self.num_groups):
             assert self.groups[i].size(0) == self.groups[i].size(1) == self.groups[0].size(0), 'All groups must be of equal size.'
         self.N = self.groups[0].size(0)
         self.group_sets = [
@@ -97,8 +97,10 @@ class GroupData(Dataset):
             for group in self.groups
         ]
 
+        if not isinstance(params.delta_frac, list):
+            params.delta_frac = [params.delta_frac] * self.num_groups
         self.group_deltas = [
-            self.group_sets[i] - set.union(*[self.group_sets[j] for j in range(num_groups) if j != i])
+            self.group_sets[i] - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
             for i in range(len(self.groups))
         ]
 
@@ -107,8 +109,12 @@ class GroupData(Dataset):
 
         train_set = set()
         train_set |= set(random_frac(intersect, params.intersect_frac))
-        for i in range(num_groups):
-            train_set |= set(random_frac(self.group_deltas[i], params.delta_frac[i]))
+        print(f'Added {len(train_set)} elements from intersection')
+        for i in range(self.num_groups):
+            to_add = set(random_frac(self.group_deltas[i], params.delta_frac[i]))
+            train_set |= to_add
+            print(f"Added {len(to_add)} elements from group {i}: {params.group_string[i]}")
+
         self.train_data = random_frac(list(train_set), params.train_frac)
         print(f'Train set size: {len(train_set)}')
 

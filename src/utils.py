@@ -76,30 +76,23 @@ def test_loss(
     model: nn.Module,
     group_dataset: GroupData,
 ) -> dict[str, Float[t.Tensor, "instance"]]:
-    """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
+    """Create all possible pairs (x,y) and return loss and accuracy for all groups in group_dataset."""
     N = group_dataset.N
     test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
 
     logits = model(test_inputs)
-    labels_group_1 = einops.rearrange(group_dataset.group1, "a b-> (a b)").to(device)
-    labels_group_2 = einops.rearrange(group_dataset.group2, "a b-> (a b)").to(device)
-    if labels_group_1.shape[0] == 47:
-        import pdb
+    labels = []
+    for group in group_dataset.groups:
+        labels.append(einops.rearrange(group, "a b -> (a b)").to(device))
 
-        pdb.set_trace()
+    loss = [get_cross_entropy(logits, label) for label in labels]
+    accuracy = [get_accuracy(logits, label) for label in labels]
+    loss_dict = dict()
+    for i in range(len(loss)):
+        loss_dict[f"G{i}_loss"] = loss[i]
+        loss_dict[f"G{i}_accuracy"] = accuracy[i]
 
-    loss_group_1 = get_cross_entropy(logits, labels_group_1)
-    loss_group_2 = get_cross_entropy(logits, labels_group_2)
-
-    accuracy_group_1 = get_accuracy(logits, labels_group_1)
-    accuracy_group_2 = get_accuracy(logits, labels_group_2)
-
-    return {
-        "G1_loss": loss_group_1,
-        "G2_loss": loss_group_2,
-        "G1_accuracy": accuracy_group_1,
-        "G2_accuracy": accuracy_group_2,
-    }
+    return loss_dict
 
 @jaxtyped(typechecker=beartype)
 def load_loss_trajectory(
@@ -117,14 +110,15 @@ def is_grokked(
     thresh_ungrok: float = 0.1,
 ) -> dict[str, Bool[t.Tensor, "instance"]]:
     """Classifies the loss trajectory into grokked and ungrokked per instance."""
-    g1_acc = trajectory["G1_accuracy"]
-    g2_acc = trajectory["G2_accuracy"]
-    grok_dict = {
-        "G1_grokked": g1_acc[:, -1] >= thresh_grok,
-        "G2_grokked": g2_acc[:, -1] >= thresh_grok,
-        "G1_ungrokked": (g1_acc.max(dim=1).values - g1_acc[:, -1] > thresh_ungrok),
-        "G2_ungrokked": (g2_acc.max(dim=1).values - g2_acc[:, -1] > thresh_ungrok),
-    }
+    num_groups = 0
+    while f"G{num_groups+1}_loss" in trajectory:
+        num_groups += 1
+    num_groups += 1
+    grok_dict = dict()
+    for i in range(num_groups):
+        acc = trajectory[f"G{i}_accuracy"]
+        grok_dict[f"G{i}_grokked"] = acc[:, -1] >= thresh_grok
+        grok_dict[f"G{i}_ungrokked"] = (acc.max(dim=1).values - acc[:, -1] > thresh_ungrok)
     return grok_dict
 
 @jaxtyped(typechecker=beartype)
@@ -168,10 +162,7 @@ def fourier_transform_embedding(matrix, params):
 
 def measure_llc(model, params, summary: bool):
 
-    Group_Dataset = GroupData(params=params)
-    train_data = t.utils.data.Subset(
-        Group_Dataset, random_indices(Group_Dataset, params)
-    )
+    train_data = GroupData(params=params)
     if params.max_batch == True:
         batch_size = len(train_data)
     else:

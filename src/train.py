@@ -38,19 +38,19 @@ class Parameters:
     beta2: int = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
-    data_group1: bool = True  # training data G1
-    data_group2: bool = True  # training data G2
-    add_points_group1: int = 0  # add points from G1 only
-    add_points_group2: int = 0  # add points from G2 only
-    checkpoint: int = -1
+    checkpoint: int = 3
     name: str = "experiment"
     seed: int = 42
-    group_string: tuple[str] = ("twisted(cyclic(48))", "twisted(cyclic(48), lambda x: 25 * x))")
-    intersect_frac: float = 1.
-    delta_frac: tuple[float] = (0., 0.)
+    group_string: tuple[str] = (
+        "twisted(cyclic(48))",
+        "twisted(cyclic(48), lambda x: 25 * x))",
+    )
+    intersect_frac: float = 1.0
+    delta_frac: tuple[float] = 0.0
     train_frac: float = 1.0
 
-def train(model, train_data, params):
+
+def train(model, group_dataset, params):
     t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
@@ -61,12 +61,12 @@ def train(model, train_data, params):
     )
 
     if params.max_batch == True:
-        batch_size = len(train_data)
+        batch_size = len(group_dataset)
     else:
         batch_size = params.batch_size
 
     train_loader = DataLoader(
-        dataset=train_data,
+        dataset=group_dataset,
         batch_size=batch_size,
         shuffle=True,
         drop_last=False,
@@ -90,10 +90,10 @@ def train(model, train_data, params):
 
     step = 0
     checkpoint_every = None
+    directory_path = f"models/{current_time}_{params.name}"
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
 
-        directory_path = f"models/{current_time}_{params.name}"
         if not os.path.exists(directory_path):
             os.makedirs(directory_path + "/losses")
             os.makedirs(directory_path + "/ckpts")
@@ -119,10 +119,10 @@ def train(model, train_data, params):
             for inst in range(params.instances):
                 for k in loss_dict:
                     log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
-            g1_grokked = (loss_dict["G1_accuracy"] >= 1 - 5e-3).sum()
-            g2_grokked = (loss_dict["G2_accuracy"] >= 1 - 5e-3).sum()
-            log_dict["G1_grokked_count"] = g1_grokked.item()
-            log_dict["G2_grokked_count"] = g2_grokked.item()
+            for i in range(group_dataset.num_groups):
+                log_dict[f"G{i}_grokked_count"] = (
+                    (loss_dict[f"G{i}_accuracy"] >= 1 - 5e-3).sum().item()
+                )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 t.save(
                     model.state_dict(),
@@ -134,7 +134,7 @@ def train(model, train_data, params):
         epoch_train_acc.zero_()
         nn.init.constant_(epoch_train_margin, np.inf)
         for x, z in train_loader:
-            global_step = epoch * len(train_data) + step
+            global_step = epoch * len(group_dataset) + step
             if global_step < params.warmup_steps:
                 lr = global_step * params.lr / float(params.warmup_steps)
             else:
@@ -157,18 +157,18 @@ def train(model, train_data, params):
             loss.sum().backward()
             optimizer.step()
             step += 1
-            # gc.collect()
-            # t.cuda.empty_cache()
 
-        epoch_train_loss /= len(train_data)
-        epoch_train_acc /= len(train_data)
+        epoch_train_loss /= len(group_dataset)
+        epoch_train_acc /= len(group_dataset)
 
         wandb.log(log_dict)
     wandb.finish()
-    print(os.path.abspath(directory_path))
-    print("============SUMMARY STATS============")
-    traj = load_loss_trajectory(directory_path)
-    is_grokked_summary(traj, params.instances)
+
+    if checkpoint_every is not None:
+        print(os.path.abspath(directory_path))
+        print("============SUMMARY STATS============")
+        traj = load_loss_trajectory(directory_path)
+        is_grokked_summary(traj, params.instances)
 
 
 if __name__ == "__main__":
@@ -181,4 +181,4 @@ if __name__ == "__main__":
     params.__dict__.update(arg_vars)
     group_dataset = GroupData(params=params)
     model = MLP3(group_dataset.N, params=params).to(device)
-    train(model=model, train_data=group_dataset, params=params)
+    train(model=model, group_dataset=group_dataset, params=params)
