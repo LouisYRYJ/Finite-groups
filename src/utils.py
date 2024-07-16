@@ -5,37 +5,19 @@ from torch import nn
 import torch.nn.functional as F
 from devinterp.optim.sgld import SGLD
 from devinterp.slt import estimate_learning_coeff_with_summary, estimate_learning_coeff
-from groups_data import GroupData
 from torch.utils.data import DataLoader
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
-from groups_data import GroupData
-from typing import Tuple
+from group_data import *
+from typing import Tuple, Union
 from itertools import product
 import glob
 import numpy as np
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
-# Easier to just use F.cross_entropy
-# def loss_fn(logits, labels):
-# """
-# Compute cross entropy loss.
-
-# Args:
-# logits (Tensor): (batch, group.order) tensor of logits
-# labels (Tensor): (batch) tensor of labels
-
-# Returns:
-# float: cross entropy loss
-# """
-# log_probs = logits.log_softmax(dim=-1)
-# correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
-# return -correct_log_probs.mean()
-
-
-@jaxtyped(typechecker=beartype)
 @t.no_grad()
+@jaxtyped(typechecker=beartype)
 def get_accuracy(
     logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
 ) -> Float[t.Tensor, "instance"]:
@@ -45,7 +27,6 @@ def get_accuracy(
     instances = logits.shape[1]
     labels = einops.repeat(labels, "batch -> batch n", n=instances)
     return (logits.argmax(-1) == labels).sum(dim=0) / labels.shape[0]
-
 
 @jaxtyped(typechecker=beartype)
 def get_cross_entropy(
@@ -93,10 +74,10 @@ def get_margin(
 @t.no_grad()
 def test_loss(
     model: nn.Module,
-    N: int,
     group_dataset: GroupData,
 ) -> dict[str, Float[t.Tensor, "instance"]]:
     """Create all possible pairs (x,y) and return loss and accuracy for G_1 and G_2"""
+    N = group_dataset.N
     test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
 
     logits = model(test_inputs)
@@ -120,7 +101,7 @@ def test_loss(
         "G2_accuracy": accuracy_group_2,
     }
 
-
+@jaxtyped(typechecker=beartype)
 def load_loss_trajectory(
     save_path: str,
 ) -> dict[str, Float[t.Tensor, "instance epoch"]]:
@@ -129,6 +110,7 @@ def load_loss_trajectory(
     losses = [t.load(f) for f in loss_files]
     return {k: t.stack([l[k] for l in losses], dim=1) for k in losses[0]}
 
+@jaxtyped(typechecker=beartype)
 def is_grokked(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
     thresh_grok: float = 1 - 5e-3,
@@ -145,6 +127,7 @@ def is_grokked(
     }
     return grok_dict
 
+@jaxtyped(typechecker=beartype)
 def is_grokked_summary(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
     instances: int,
@@ -154,17 +137,11 @@ def is_grokked_summary(
     grokked = is_grokked(trajectory, thresh_grok=thresh_grok, thresh_ungrok=thresh_ungrok)
     for k in grokked:
         print(
-            f"{k}: {grokked[k].sum().item()}/{instances} ({grokked[k].sum().item() / instances:.2f})"
+            f"{k}: {frac_str(grokked[k].sum().item(), instances)}"
         )
 
-def random_indices(full_dataset, params):
-    num_indices = int(len(full_dataset) * params.train_frac)
-    picked_indices = random.sample(list(range(len(full_dataset))), num_indices)
-    return picked_indices
 
-
-def make_fourier_basis(params):
-    group_order = params.N
+def make_fourier_basis(group_order):
     fourier_basis_values = t.ones(group_order, group_order)
     fourier_basis_names = ["Const"]
     for i in range(1, group_order // 2):
@@ -236,8 +213,10 @@ def measure_llc(model, params, summary: bool):
 
     return learning_coeff_stats
 
-
-def autocast(x):
+@jaxtyped(typechecker=beartype)
+def autocast(x: str) -> Union[int, float, str, tuple]:
+    if ';' in x:
+        return tuple(map(autocast, x.split(';')))
     try:
         return int(x)
     except:

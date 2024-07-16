@@ -10,7 +10,7 @@ import os
 from train import Parameters
 from model import MLP2
 import torch as t
-from groups_data import GroupData
+from group_data import GroupData
 from utils import random_indices, test_loss, measure_llc
 from torch.utils.data import DataLoader
 import re

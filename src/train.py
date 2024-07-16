@@ -8,9 +8,9 @@ from model import MLP2, MLP3
 import wandb
 import dataclasses
 from dataclasses import dataclass
-from groups_data import GroupData
 from datetime import datetime
 from utils import *
+from group_data import *
 import json
 import argparse
 import einops
@@ -26,17 +26,13 @@ device = t.device("cuda" if t.cuda.is_available() else "cpu")
 @dataclass
 class Parameters:
     instances: int = 3
-    N_1: int = 48
-    N: int = N_1 * 2  # cardinality of group
     embed_dim: int = 32
     hidden_size: int = 64
     num_epoch: int = 2000
     batch_size: int = 64
     max_batch: bool = True  # batch size is the whole data set
     activation: str = "relu"  # gelu or relu
-    max_steps_per_epoch: int = N * N // batch_size
-    train_frac: float = 1.0
-    weight_decay: float = 0.0002
+    weight_decay: float = 2e-4
     lr: float = 0.01
     beta1: int = 0.9
     beta2: int = 0.98
@@ -46,12 +42,15 @@ class Parameters:
     data_group2: bool = True  # training data G2
     add_points_group1: int = 0  # add points from G1 only
     add_points_group2: int = 0  # add points from G2 only
-    checkpoint: int = 3
-    random: bool = False
+    checkpoint: int = -1
     name: str = "experiment"
     seed: int = 42
+    group_string: tuple[str] = ("twisted(cyclic(48))", "twisted(cyclic(48), lambda x: 25 * x))")
+    intersect_frac: float = 1.
+    delta_frac: tuple[float] = (0., 0.)
+    train_frac: float = 1.0
 
-def train(model, params):
+def train(model, train_data, params):
     t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     wandb.init(
@@ -59,11 +58,6 @@ def train(model, params):
         project="group generalization",
         name=f"{current_time}_{params.name}",
         config=params.__dict__,
-    )
-    group_dataset = GroupData(params=params)
-
-    train_data = t.utils.data.Subset(
-        group_dataset, random_indices(group_dataset, params)
     )
 
     if params.max_batch == True:
@@ -95,8 +89,6 @@ def train(model, params):
         )
 
     step = 0
-    list_of_figures = []
-
     checkpoint_every = None
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
@@ -119,7 +111,7 @@ def train(model, params):
     for epoch in tqdm(range(params.num_epoch)):
         with t.no_grad():
             model.eval()
-            loss_dict = test_loss(model, params.N, group_dataset)
+            loss_dict = test_loss(model, group_dataset)
             loss_dict["epoch_train_loss"] = epoch_train_loss
             loss_dict["epoch_train_acc"] = epoch_train_acc
             loss_dict["epoch_train_margin"] = epoch_train_margin
@@ -187,8 +179,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
-    # Need to update these manually...
-    params.N = params.N_1 * 2
-    params.max_steps_per_epoch = params.N * params.N // params.batch_size
-    model = MLP3(params).to(device)
-    train(model=model, params=params)
+    group_dataset = GroupData(params=params)
+    model = MLP3(group_dataset.N, params=params).to(device)
+    train(model=model, train_data=group_dataset, params=params)

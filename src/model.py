@@ -69,20 +69,21 @@ def custom_kaiming(dims):
 
 
 class MLP3(nn.Module):
-    def __init__(self, params):
+    def __init__(self, N, params):
         super().__init__()
         self.params = params
+        self.N = N
 
         self.Embedding_left = custom_kaiming(
             [
                 params.instances,
-                params.N,
+                self.N,
                 params.embed_dim,
             ]
         )
 
         self.Embedding_right = custom_kaiming(
-            [params.instances, params.N, params.embed_dim]
+            [params.instances, self.N, params.embed_dim]
         )
 
         self.linear = custom_kaiming(
@@ -90,7 +91,7 @@ class MLP3(nn.Module):
         )
 
         self.Umbedding = custom_kaiming(
-            [params.instances, params.hidden_size, params.N]
+            [params.instances, params.hidden_size, self.N]
         )
 
         if params.activation == "gelu":
@@ -114,8 +115,8 @@ class MLP3(nn.Module):
 
         a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
 
-        a_1_onehot = F.one_hot(a_1, num_classes=self.params.N).float()
-        a_2_onehot = F.one_hot(a_2, num_classes=self.params.N).float()
+        a_1_onehot = F.one_hot(a_1, num_classes=self.N).float()
+        a_2_onehot = F.one_hot(a_2, num_classes=self.N).float()
 
         x_1 = einops.einsum(
             a_1_onehot,

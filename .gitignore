@@ -7,3 +7,4 @@ wandb/
 __pycache__/
 wandb/
 poetry.lock
+.ipynb_checkpoints/
