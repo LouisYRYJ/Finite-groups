@@ -21,7 +21,7 @@ def random_frac(full_dataset, frac):
 @jaxtyped(typechecker=beartype)
 def twisted(
     group: Int[t.Tensor, "N N"], 
-    automorphism: Callable[int, int] =lambda x: x
+    automorphism: Callable[[int], int] =lambda x: x
 ) -> Int[t.Tensor, "2*N 2*N"]:
     """Constructs semidirect product of groups with Z/2Z using the given automorphism"""
     group_cardinality = group.size(dim=0)
