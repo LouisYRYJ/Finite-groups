@@ -19,7 +19,6 @@ import numpy as np
 import gc
 from typing import Optional, Union
 
-# os.environ["WANDB_MODE"] = "disabled"
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -51,6 +50,7 @@ class Parameters:
     train_frac: float = 1.0
     save_weights: bool = False
     load_weights: Optional[str] = None
+    wandb: bool = False
 
 
 def train(model, group_dataset, params):
@@ -58,6 +58,8 @@ def train(model, group_dataset, params):
         model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    if not params.wandb:
+        os.environ["WANDB_MODE"] = "disabled"
     wandb.init(
         entity="neural_fate",
         project="group generalization",

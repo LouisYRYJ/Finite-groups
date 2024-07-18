@@ -83,7 +83,7 @@ def test_loss(
     logits = model(test_inputs)
     labels = []
     for group in group_dataset.groups:
-        labels.append(einops.rearrange(group, "a b -> (a b)").to(device))
+        labels.append(einops.rearrange(group.cayley_table, "a b -> (a b)").to(device))
 
     loss = [get_cross_entropy(logits, label) for label in labels]
     accuracy = [get_accuracy(logits, label) for label in labels]

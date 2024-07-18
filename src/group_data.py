@@ -3,14 +3,16 @@ import torch as t
 import random
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
-from typing import Callable, Union
+from typing import Callable, Union, Any
 from utils import *
+from itertools import product
+
 
 # TODO: Find a better place to put this.
 # Can't put in utils b/c utils imports GroupData
 @jaxtyped(typechecker=beartype)
 def frac_str(a: Union[int, float], b: Union[int, float]) -> str:
-    return f'{a}/{b} ({a/b:.2f})'
+    return f"{a}/{b} ({a/b:.2f})"
 
 
 def random_frac(full_dataset, frac):
@@ -18,66 +20,159 @@ def random_frac(full_dataset, frac):
     return random.sample(list(full_dataset), num_indices)
 
 
+class Group:
+    """
+    Implements a group (technically, any magma) as a idx -> element lookup table and a Cayley table on idxs.
+    """
+
+    def __init__(self, elements, cayley_table):
+        self.elements = elements
+        self.cayley_table = cayley_table
+        self.identity = None
+        for a in self.elements:
+            if all(self.mult(a, b) == b == self.mult(b, a) for b in self.elements):
+                self.identity = a
+                break
+
+    def elem_to_idx(self, elem):
+        return self.elements.index(elem)
+
+    def idx_to_elem(self, idx):
+        return self.elements[idx]
+
+    def __len__(self):
+        return len(self.elements)
+
+    def mult(self, a, b):
+        return self.idx_to_elem(
+            self.cayley_table[self.elem_to_idx(a), self.elem_to_idx(b)]
+        )
+
+    def __repr__(self):
+        return f"Group({self.elements}, {self.cayley_table})"
+
+    def inv(self, a):
+        for b in self.elements:
+            if self.mult(a, b) == self.identity:
+                return b
+
+
 @jaxtyped(typechecker=beartype)
-def twisted(
-    group: Int[t.Tensor, "N N"], 
-    automorphism: Callable[[int], int] =lambda x: x
-) -> Int[t.Tensor, "2*N 2*N"]:
-    """Constructs semidirect product of groups with Z/2Z using the given automorphism"""
-    group_cardinality = group.size(dim=0)
-    new_cardinality = group_cardinality * 2
-    new_group = t.zeros((new_cardinality, new_cardinality), dtype=t.int64)
-
-    for i in range(new_cardinality):
-        for j in range(new_cardinality):
-            if i < group_cardinality and j < group_cardinality:
-                new_group[i, j] = group[i, j]
-
-            if i < group_cardinality and j >= group_cardinality:
-                new_group[i, j] = group[i, j - group_cardinality] + group_cardinality
-
-            if i >= group_cardinality and j < group_cardinality:
-                new_group[i, j] = (
-                    group[i - group_cardinality, automorphism(j) % group_cardinality]
-                    + group_cardinality
-                )
-
-            if i >= group_cardinality and j >= group_cardinality:
-                new_group[i, j] = group[
-                    i - group_cardinality,
-                    automorphism(j - group_cardinality) % group_cardinality,
-                ]
-
-    return new_group
-
-
-@jaxtyped(typechecker=beartype)
-def cyclic(N: int) -> Int[t.Tensor, "N N"]:
-    cyclic_group = t.zeros((N, N), dtype=t.int64)
+def cyclic(N: int) -> Group:
+    elements = list(range(N))
+    cayley_table = t.zeros((N, N), dtype=t.int64)
     for i in range(N):
         for j in range(N):
-            cyclic_group[i, j] = (i + j) % N
-    return cyclic_group
+            cayley_table[i, j] = (i + j) % N
+    return Group(elements, cayley_table)
 
 
 @jaxtyped(typechecker=beartype)
-def random_magma(N: int) -> Int[t.Tensor, "N N"]:
-    rand_magma = t.zeros((N, N), dtype=t.int64)
+def clamped(N: int) -> Group:
+    elements = list(range(N))
+    cayley_table = t.zeros((N, N), dtype=t.int64)
     for i in range(N):
         for j in range(N):
-            rand_magma[i, j] = random.randint(0, N-1)
-    return rand_magma
+            cayley_table[i, j] = max(i + j, N)
+    return Group(elements, cayley_table)
 
-    
+
 @jaxtyped(typechecker=beartype)
-def string_to_groups(
-    s: Union[str, tuple[str, ...]]
-) -> tuple[Int[t.Tensor, "N N"], ...]:
-    '''
+def randm(N: int) -> Group:
+    elements = list(range(N))
+    cayley_table = t.randint(0, N, (N, N), dtype=t.int64)
+    return Group(elements, cayley_table)
+
+
+@jaxtyped(typechecker=beartype)
+def semidirect_product(
+    group1: Group, group2: Group, phi: Callable[..., Callable[..., Any]]
+) -> Group:
+    N1 = len(group1)
+    N2 = len(group2)
+    elements = [(a, b) for a in group1.elements for b in group2.elements]
+    cayley_table = t.zeros((N1 * N2, N1 * N2), dtype=t.int64)
+    for i in range(N1 * N2):
+        for j in range(N1 * N2):
+            a1, b1 = elements[i]
+            a2, b2 = elements[j]
+            cayley_table[i, j] = elements.index(
+                (group1.mult(a1, phi(b1)(a2)), group2.mult(b1, b2))
+            )
+    return Group(elements, cayley_table)
+
+
+@jaxtyped(typechecker=beartype)
+def direct_product(group1: Group, group2: Group) -> Group:
+    return semidirect_product(group1, group2, lambda x: lambda y: y)
+
+
+@jaxtyped(typechecker=beartype)
+def Z(*args: int) -> Group:
+    """
+    Convenience function for products of cyclic groups.
+    """
+    group = cyclic(args[0])
+    for arg in args[1:]:
+        group = direct_product(group, cyclic(arg))
+    return group
+
+
+@jaxtyped(typechecker=beartype)
+def twisted(group: Group, automorphism: Callable[..., Any]) -> Group:
+    phi = lambda x: automorphism if x else lambda y: y
+    return semidirect_product(group, cyclic(2), phi)
+
+
+@jaxtyped(typechecker=beartype)
+def twZ(N: int) -> Group:
+    return twisted(cyclic(N), lambda x: (N // 2 + 1) * x)
+
+
+@jaxtyped(typechecker=beartype)
+def XFam(N: int) -> list[Group]:
+    """
+    List of all possible twisted(Z(N, N), automorphism) groups such that
+    automorphism is order 2 and preserves the diagonal of Z(N, N)
+    """
+    ret = []
+    for a, b, c, d in product(range(N), repeat=4):
+        # Automorphisms on Z(N, N) can be written as 2x2 matrices [[a, b], [c, d]] over Z(N)
+        conds = [
+            # Automorphism is order 2
+            (a**2 + b * c) % N == 1,
+            (d**2 + b * c) % N == 1,
+            (a * b + b * d) % N == 0,
+            (a * c + c * d) % N == 0,
+            # Automorphism preserves the diagonal
+            (a + b) % N == 1,
+            (c + d) % N == 1,
+        ]
+        if all(conds):
+            # a=a etc needed to capture values of a, b, c, d
+            aut = lambda x, a=a, b=b, c=c, d=d: (
+                (a * x[0] + b * x[1]) % N,
+                (c * x[0] + d * x[1]) % N,
+            )
+            ret.append(twisted(Z(N, N), aut))
+    return ret
+
+
+@jaxtyped(typechecker=beartype)
+def string_to_groups(s: Union[str, tuple[str, ...]]) -> tuple[Group, ...]:
+    """
     Input string s should be calls to above functions (returning NxN multiplication tables), delimited by ';'
-    '''
+    """
     if isinstance(s, str):
-        s = s.split(';')
+        s = s.split(";")
+    ret = []
+    for group in map(eval, s):
+        if isinstance(group, Group):
+            ret.append(group)
+        elif isinstance(group, tuple) or isinstance(group, list):
+            ret.extend(group)
+        else:
+            raise ValueError(f"Invalid group: {group}")
     return tuple(map(eval, s))
 
 
@@ -85,12 +180,12 @@ class GroupData(Dataset):
     def __init__(self, params):
         self.groups = string_to_groups(params.group_string)
         self.num_groups = len(self.groups)
-        for i in range(1, self.num_groups):
-            assert self.groups[i].size(0) == self.groups[i].size(1) == self.groups[0].size(0), 'All groups must be of equal size.'
-        self.N = self.groups[0].size(0)
+        self.N = len(self.groups[0])
+        for group in self.groups:
+            assert len(group) == self.N, "All groups must be of equal size."
         self.group_sets = [
             {
-                (i, j, group[i, j].item())
+                (i, j, group.cayley_table[i, j].item())
                 for i in range(self.N)
                 for j in range(self.N)
             }
@@ -100,23 +195,26 @@ class GroupData(Dataset):
         if not isinstance(params.delta_frac, list):
             params.delta_frac = [params.delta_frac] * self.num_groups
         self.group_deltas = [
-            self.group_sets[i] - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
+            self.group_sets[i]
+            - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
             for i in range(len(self.groups))
         ]
 
         intersect = set.intersection(*self.group_sets)
-        print(f'Intersection size: {frac_str(len(intersect), len(self.group_sets[0]))}')
+        print(f"Intersection size: {frac_str(len(intersect), len(self.group_sets[0]))}")
 
         train_set = set()
         train_set |= set(random_frac(intersect, params.intersect_frac))
-        print(f'Added {len(train_set)} elements from intersection')
+        print(f"Added {len(train_set)} elements from intersection")
         for i in range(self.num_groups):
             to_add = set(random_frac(self.group_deltas[i], params.delta_frac[i]))
             train_set |= to_add
-            print(f"Added {len(to_add)} elements from group {i}: {params.group_string[i]}")
+            print(
+                f"Added {len(to_add)} elements from group {i}: {params.group_string[i]}"
+            )
 
         self.train_data = random_frac(list(train_set), params.train_frac)
-        print(f'Train set size: {len(train_set)}')
+        print(f"Train set size: {len(train_set)}")
 
     def __getitem__(self, idx):
         return (
