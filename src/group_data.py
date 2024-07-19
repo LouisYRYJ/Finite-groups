@@ -158,7 +158,7 @@ def XFam(N: int) -> list[Group]:
                 (c * x[0] + d * x[1]) % N,
             )
             group = twisted(Z(N, N), aut)
-            group.name = f"XFam(7,[[{a},{b}],[{c},{d}]])"
+            group.name = f"XFam({N},[[{a},{b}],[{c},{d}]])"
             ret.append(group)
     return ret
 

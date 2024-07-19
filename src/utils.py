@@ -82,12 +82,12 @@ def test_loss(
 
     logits = model(test_inputs)
     loss_dict = dict()
-    for group in group_dataset.groups:
+    for i, group in enumerate(group_dataset.groups):
         labels = einops.rearrange(group.cayley_table, "a b -> (a b)").to(device)
         loss = get_cross_entropy(logits, labels)
         accuracy = get_accuracy(logits, labels)
-        loss_dict[f"{group.name}_loss"] = loss
-        loss_dict[f"{group.name}_accuracy"] = accuracy
+        loss_dict[f"G{i}_loss_{group.name}"] = loss
+        loss_dict[f"G{i}_acc_{group.name}"] = accuracy
 
     return loss_dict
 
@@ -107,21 +107,17 @@ def is_grokked(
     thresh_ungrok: float = 0.1,
 ) -> dict[str, Bool[t.Tensor, "instance"]]:
     """Classifies the loss trajectory into grokked and ungrokked per instance."""
-    num_groups = 0
-    while f"G{num_groups+1}_loss" in trajectory:
-        num_groups += 1
-    num_groups += 1
     grok_dict = dict()
-    for i in range(num_groups):
-        acc = trajectory[f"G{i}_accuracy"]
-        grok_dict[f"G{i}_grokked"] = acc[:, -1] >= thresh_grok
-        grok_dict[f"G{i}_ungrokked"] = (acc.max(dim=1).values - acc[:, -1] > thresh_ungrok)
+    for k, acc in trajectory.items():
+        if 'acc' not in k:
+            continue
+        grok_dict[k.replace('acc', 'grokked')] = acc[:, -1] >= thresh_grok
+        grok_dict[k.replace('acc', 'ungrokked')] = (acc.max(dim=1).values - acc[:, -1] > thresh_ungrok)
     return grok_dict
 
 @jaxtyped(typechecker=beartype)
 def is_grokked_summary(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
-    instances: int,
     thresh_grok: float = 1 - 5e-3,
     thresh_ungrok: float = 0.1,
 ) -> None:

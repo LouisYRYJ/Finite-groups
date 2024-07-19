@@ -128,9 +128,10 @@ def train(model, group_dataset, params):
             for inst in range(params.instances):
                 for k in loss_dict:
                     log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
-            for group in group_dataset.groups:
-                log_dict[f"{group.name}_grokked_count"] = (
-                    (loss_dict[f"{group.name}_accuracy"] >= params.thresh_grok).sum().item()
+            for i, group in enumerate(group_dataset.groups):
+                # TODO: Move into utils.py test_loss()
+                log_dict[f"G{i}_grokked_{group.name}"] = (
+                    (loss_dict[f"G{i}_acc_{group.name}"] >= params.thresh_grok).sum().item()
                 )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 if params.save_weights:
@@ -185,7 +186,7 @@ def train(model, group_dataset, params):
         print(os.path.abspath(directory_path))
         print("============SUMMARY STATS============")
         traj = load_loss_trajectory(directory_path)
-        is_grokked_summary(traj, params.instances, thresh_grok=params.thresh_grok)
+        is_grokked_summary(traj, thresh_grok=params.thresh_grok)
 
 
 if __name__ == "__main__":
