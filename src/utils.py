@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
 from group_data import *
-from typing import Tuple, Union
+from typing import Tuple, Union, Any
 from itertools import product
 import glob
 import numpy as np
@@ -81,16 +81,13 @@ def test_loss(
     test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
 
     logits = model(test_inputs)
-    labels = []
-    for group in group_dataset.groups:
-        labels.append(einops.rearrange(group.cayley_table, "a b -> (a b)").to(device))
-
-    loss = [get_cross_entropy(logits, label) for label in labels]
-    accuracy = [get_accuracy(logits, label) for label in labels]
     loss_dict = dict()
-    for i in range(len(loss)):
-        loss_dict[f"G{i}_loss"] = loss[i]
-        loss_dict[f"G{i}_accuracy"] = accuracy[i]
+    for group in group_dataset.groups:
+        labels = einops.rearrange(group.cayley_table, "a b -> (a b)").to(device)
+        loss = get_cross_entropy(logits, labels)
+        accuracy = get_accuracy(logits, labels)
+        loss_dict[f"{group.name}_loss"] = loss
+        loss_dict[f"{group.name}_accuracy"] = accuracy
 
     return loss_dict
 
@@ -204,8 +201,9 @@ def measure_llc(model, params, summary: bool):
 
     return learning_coeff_stats
 
-@jaxtyped(typechecker=beartype)
-def autocast(x: str) -> Union[int, float, str, tuple]:
+def autocast(x: Any) -> Any:
+    if not isinstance(x, str):
+        return x
     if ';' in x:
         return tuple(map(autocast, x.split(';')))
     try:

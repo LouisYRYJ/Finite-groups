@@ -6,6 +6,8 @@ from beartype import beartype
 from typing import Callable, Union, Any
 from utils import *
 from itertools import product
+from collections import defaultdict
+import warnings
 
 
 # TODO: Find a better place to put this.
@@ -25,10 +27,11 @@ class Group:
     Implements a group (technically, any magma) as a idx -> element lookup table and a Cayley table on idxs.
     """
 
-    def __init__(self, elements, cayley_table):
+    def __init__(self, elements, cayley_table, name="group"):
         self.elements = elements
         self.cayley_table = cayley_table
         self.identity = None
+        self.name = name
         for a in self.elements:
             if all(self.mult(a, b) == b == self.mult(b, a) for b in self.elements):
                 self.identity = a
@@ -49,7 +52,7 @@ class Group:
         )
 
     def __repr__(self):
-        return f"Group({self.elements}, {self.cayley_table})"
+        return f"{self.name}({self.elements}, {self.cayley_table})"
 
     def inv(self, a):
         for b in self.elements:
@@ -159,21 +162,25 @@ def XFam(N: int) -> list[Group]:
 
 
 @jaxtyped(typechecker=beartype)
-def string_to_groups(s: Union[str, tuple[str, ...]]) -> tuple[Group, ...]:
+def string_to_groups(strings: Union[str, tuple[str, ...]]) -> list[Group]:
     """
     Input string s should be calls to above functions (returning NxN multiplication tables), delimited by ';'
     """
-    if isinstance(s, str):
-        s = s.split(";")
+    if isinstance(strings, str):
+        strings = strings.split(";")
     ret = []
-    for group in map(eval, s):
+    for s in strings:
+        group = eval(s)
         if isinstance(group, Group):
+            group.name = s
             ret.append(group)
         elif isinstance(group, tuple) or isinstance(group, list):
+            for i, g in enumerate(group):
+                g.name = f"{s}_{i}"
             ret.extend(group)
         else:
-            raise ValueError(f"Invalid group: {group}")
-    return tuple(map(eval, s))
+            raise ValueError(f"Invalid group: {s}")
+    return ret
 
 
 class GroupData(Dataset):
@@ -183,6 +190,16 @@ class GroupData(Dataset):
         self.N = len(self.groups[0])
         for group in self.groups:
             assert len(group) == self.N, "All groups must be of equal size."
+
+        # Deduplicate group names
+        names_dict = defaultdict(int)
+        for group in self.groups:
+            if names_dict[group.name] > 0:
+                new_name = f"{group.name}_{names_dict[group.name]+1}"
+                warnings.warn(f"Duplicate group name: {group.name}. Deduplicating to {new_name}")
+                group.name = new_name
+            names_dict[group.name] += 1
+            
         self.group_sets = [
             {
                 (i, j, group.cayley_table[i, j].item())
@@ -194,11 +211,14 @@ class GroupData(Dataset):
 
         if not isinstance(params.delta_frac, list):
             params.delta_frac = [params.delta_frac] * self.num_groups
-        self.group_deltas = [
-            self.group_sets[i]
-            - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
-            for i in range(len(self.groups))
-        ]
+        if len(self.groups) == 1:
+            self.group_deltas = [set()]
+        else:
+            self.group_deltas = [
+                self.group_sets[i]
+                - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
+                for i in range(len(self.groups))
+            ]
 
         intersect = set.intersection(*self.group_sets)
         print(f"Intersection size: {frac_str(len(intersect), len(self.group_sets[0]))}")
@@ -209,12 +229,10 @@ class GroupData(Dataset):
         for i in range(self.num_groups):
             to_add = set(random_frac(self.group_deltas[i], params.delta_frac[i]))
             train_set |= to_add
-            print(
-                f"Added {len(to_add)} elements from group {i}: {params.group_string[i]}"
-            )
+            print(f"Added {len(to_add)} elements from group {i}: {self.groups[i].name}")
 
         self.train_data = random_frac(list(train_set), params.train_frac)
-        print(f"Train set size: {len(train_set)}")
+        print(f"Train set size: {len(self.train_data)}")
 
     def __getitem__(self, idx):
         return (

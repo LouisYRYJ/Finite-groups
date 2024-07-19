@@ -18,6 +18,7 @@ from pprint import pprint
 import numpy as np
 import gc
 from typing import Optional, Union
+import re
 
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -30,7 +31,7 @@ class Parameters:
     hidden_size: int = 64
     num_epoch: int = 2000
     batch_size: int = 64
-    max_batch: bool = True  # batch size is the whole data set
+    batched: bool = False # if false, batch is entire data set
     activation: str = "relu"  # gelu or relu
     weight_decay: float = 2e-4
     lr: float = 0.01
@@ -39,11 +40,10 @@ class Parameters:
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     checkpoint: int = 3
-    name: str = "experiment"
+    name: Optional[str]= None
     seed: int = 42
-    group_string: tuple[str] = (
-        "twisted(cyclic(48))",
-        "twisted(cyclic(48), lambda x: 25 * x))",
+    group_string: str = (
+        "twisted(cyclic(48));twisted(cyclic(48), lambda x: 25 * x))",
     )
     intersect_frac: float = 1.0
     delta_frac: Union[tuple[float], float] = 0.0
@@ -67,7 +67,7 @@ def train(model, group_dataset, params):
         config=params.__dict__,
     )
 
-    if params.max_batch == True:
+    if not params.batched:
         batch_size = len(group_dataset)
     else:
         batch_size = params.batch_size
@@ -98,6 +98,7 @@ def train(model, group_dataset, params):
     step = 0
     checkpoint_every = None
     directory_path = f"models/{current_time}_{params.name}"
+    directory_path = re.sub(r"[^a-zA-Z0-9_/]", "_", directory_path)
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
 
@@ -126,9 +127,9 @@ def train(model, group_dataset, params):
             for inst in range(params.instances):
                 for k in loss_dict:
                     log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
-            for i in range(group_dataset.num_groups):
-                log_dict[f"G{i}_grokked_count"] = (
-                    (loss_dict[f"G{i}_accuracy"] >= 1 - 5e-3).sum().item()
+            for group in group_dataset.groups:
+                log_dict[f"{group.name}_grokked_count"] = (
+                    (loss_dict[f"{group.name}_accuracy"] >= 1 - 5e-3).sum().item()
                 )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 if params.save_weights:
@@ -189,11 +190,16 @@ def train(model, group_dataset, params):
 if __name__ == "__main__":
     params = Parameters()
     parser = argparse.ArgumentParser()
-    for k in params.__dict__:
-        parser.add_argument(f"--{k}")
+    for field in dataclasses.fields(params):
+        if field.type == bool:
+            parser.add_argument(f"--{field.name}", action="store_true")
+        else:
+            parser.add_argument(f"--{field.name}", type=field.type)
     args = parser.parse_args()
-    arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
+    arg_vars = {k: v for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
+    if params.name is None:
+        params.name = params.group_string
     group_dataset = GroupData(params=params)
     model = MLP3(group_dataset.N, params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)
