@@ -157,7 +157,9 @@ def XFam(N: int) -> list[Group]:
                 (a * x[0] + b * x[1]) % N,
                 (c * x[0] + d * x[1]) % N,
             )
-            ret.append(twisted(Z(N, N), aut))
+            group = twisted(Z(N, N), aut)
+            group.name = f"XFam(7,[[{a},{b}],[{c},{d}]])"
+            ret.append(group)
     return ret
 
 
@@ -172,11 +174,13 @@ def string_to_groups(strings: Union[str, tuple[str, ...]]) -> list[Group]:
     for s in strings:
         group = eval(s)
         if isinstance(group, Group):
-            group.name = s
+            if group.name == "group":
+                group.name = s
             ret.append(group)
         elif isinstance(group, tuple) or isinstance(group, list):
             for i, g in enumerate(group):
-                g.name = f"{s}_{i}"
+                if g.name == "group":
+                    g.name = f"{s}_{i}"
             ret.extend(group)
         else:
             raise ValueError(f"Invalid group: {s}")

@@ -40,7 +40,7 @@ class Parameters:
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     checkpoint: int = 3
-    name: Optional[str]= None
+    name: str= ""
     seed: int = 42
     group_string: str = (
         "twisted(cyclic(48));twisted(cyclic(48), lambda x: 25 * x))",
@@ -49,12 +49,13 @@ class Parameters:
     delta_frac: Union[tuple[float], float] = 0.0
     train_frac: float = 1.0
     save_weights: bool = False
-    load_weights: Optional[str] = None
+    load_weights: str = ""
     wandb: bool = False
+    thresh_grok: float = 0.95
 
 
 def train(model, group_dataset, params):
-    if params.load_weights is not None:
+    if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -129,7 +130,7 @@ def train(model, group_dataset, params):
                     log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
             for group in group_dataset.groups:
                 log_dict[f"{group.name}_grokked_count"] = (
-                    (loss_dict[f"{group.name}_accuracy"] >= 1 - 5e-3).sum().item()
+                    (loss_dict[f"{group.name}_accuracy"] >= params.thresh_grok).sum().item()
                 )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 if params.save_weights:
@@ -184,7 +185,7 @@ def train(model, group_dataset, params):
         print(os.path.abspath(directory_path))
         print("============SUMMARY STATS============")
         traj = load_loss_trajectory(directory_path)
-        is_grokked_summary(traj, params.instances)
+        is_grokked_summary(traj, params.instances, thresh_grok=params.thresh_grok)
 
 
 if __name__ == "__main__":
@@ -198,7 +199,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     arg_vars = {k: v for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
-    if params.name is None:
+    if not params.name:
         params.name = params.group_string
     group_dataset = GroupData(params=params)
     model = MLP3(group_dataset.N, params=params).to(device)
