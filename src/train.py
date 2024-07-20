@@ -62,7 +62,7 @@ def train(model, group_dataset, params):
         os.environ["WANDB_MODE"] = "disabled"
     wandb.init(
         entity="neural_fate",
-        project=params.projectj,
+        project=params.project,
         name=f"{current_time}_{params.name}",
         config=params.__dict__,
     )
