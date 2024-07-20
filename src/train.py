@@ -29,14 +29,14 @@ class Parameters:
     instances: int = 3
     embed_dim: int = 32
     hidden_size: int = 64
-    num_epoch: int = 2000
+    epochs: int = 2000
     batch_size: int = 64
     batched: bool = False # if false, batch is entire data set
     activation: str = "relu"  # gelu or relu
     weight_decay: float = 2e-4
     lr: float = 0.01
-    beta1: int = 0.9
-    beta2: int = 0.98
+    beta1: float= 0.9
+    beta2: float= 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     checkpoint: int = 3
@@ -52,6 +52,7 @@ class Parameters:
     load_weights: str = ""
     wandb: bool = False
     thresh_grok: float = 0.95
+    project: str = "group generalization"
 
 
 def train(model, group_dataset, params):
@@ -63,7 +64,7 @@ def train(model, group_dataset, params):
         os.environ["WANDB_MODE"] = "disabled"
     wandb.init(
         entity="neural_fate",
-        project="group generalization",
+        project=params.projectj,
         name=f"{current_time}_{params.name}",
         config=params.__dict__,
     )
@@ -117,7 +118,7 @@ def train(model, group_dataset, params):
     epoch_train_margin = t.full((params.instances,), np.inf, device=device)
 
     # TODO: fix train loss and acc and margin and move into a logging function
-    for epoch in tqdm(range(params.num_epoch)):
+    for epoch in tqdm(range(params.epochs)):
         with t.no_grad():
             model.eval()
             loss_dict = test_loss(model, group_dataset)
@@ -186,7 +187,7 @@ def train(model, group_dataset, params):
         print(os.path.abspath(directory_path))
         print("============SUMMARY STATS============")
         traj = load_loss_trajectory(directory_path)
-        is_grokked_summary(traj, thresh_grok=params.thresh_grok)
+        is_grokked_summary(traj, params.instances, thresh_grok=params.thresh_grok)
 
 
 if __name__ == "__main__":

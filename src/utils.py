@@ -118,6 +118,7 @@ def is_grokked(
 @jaxtyped(typechecker=beartype)
 def is_grokked_summary(
     trajectory: dict[str, Float[t.Tensor, "instance epoch"]],
+    instances: int,
     thresh_grok: float = 1 - 5e-3,
     thresh_ungrok: float = 0.1,
 ) -> None:
