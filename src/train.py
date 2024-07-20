@@ -42,9 +42,7 @@ class Parameters:
     checkpoint: int = 3
     name: str= ""
     seed: int = 42
-    group_string: str = (
-        "twisted(cyclic(48));twisted(cyclic(48), lambda x: 25 * x))",
-    )
+    group_string: str = "Z(48,2);twZ(48)"
     intersect_frac: float = 1.0
     delta_frac: Union[tuple[float], float] = 0.0
     train_frac: float = 1.0

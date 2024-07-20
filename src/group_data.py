@@ -129,7 +129,7 @@ def twisted(group: Group, automorphism: Callable[..., Any]) -> Group:
 
 @jaxtyped(typechecker=beartype)
 def twZ(N: int) -> Group:
-    return twisted(cyclic(N), lambda x: (N // 2 + 1) * x)
+    return twisted(cyclic(N), lambda x: ((N // 2 + 1) * x) % N)
 
 
 @jaxtyped(typechecker=beartype)
