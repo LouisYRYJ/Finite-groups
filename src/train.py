@@ -20,6 +20,7 @@ import numpy as np
 import gc
 from typing import Optional, Union
 import re
+import warnings
 
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -61,6 +62,7 @@ def train(model, group_dataset, params):
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     if not params.wandb:
         os.environ["WANDB_MODE"] = "disabled"
+        warnings.warn("Wandb is disabled!")
     wandb.init(
         entity="neural_fate",
         project=params.project,

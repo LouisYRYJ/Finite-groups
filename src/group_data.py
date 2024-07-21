@@ -54,10 +54,19 @@ class Group:
     def __repr__(self):
         return f"{self.name}({self.elements}, {self.cayley_table})"
 
+    # TODO: more efficient if inv, order, etc are cached.
     def inv(self, a):
         for b in self.elements:
             if self.mult(a, b) == self.identity:
                 return b
+
+    def order(self, a):
+        x = a
+        n = 1
+        while x != self.identity:
+            x = self.mult(x, a)
+            n += 1
+        return n
 
 
 @jaxtyped(typechecker=beartype)
@@ -93,7 +102,9 @@ def semidirect_product(
 ) -> Group:
     N1 = len(group1)
     N2 = len(group2)
-    elements = [(a, b) for a in group1.elements for b in group2.elements]
+    elements = [
+        (a, b) for b in group2.elements for a in group1.elements
+    ]  # right-to-left lexicographic order
     cayley_table = t.zeros((N1 * N2, N1 * N2), dtype=t.int64)
     for i in range(N1 * N2):
         for j in range(N1 * N2):
@@ -108,6 +119,9 @@ def semidirect_product(
 @jaxtyped(typechecker=beartype)
 def direct_product(group1: Group, group2: Group) -> Group:
     return semidirect_product(group1, group2, lambda x: lambda y: y)
+
+
+times = direct_product
 
 
 @jaxtyped(typechecker=beartype)
@@ -125,6 +139,32 @@ def Z(*args: int) -> Group:
 def twisted(group: Group, automorphism: Callable[..., Any]) -> Group:
     phi = lambda x: automorphism if x else lambda y: y
     return semidirect_product(group, cyclic(2), phi)
+
+
+@jaxtyped(typechecker=beartype)
+def D(N: int) -> Group:
+    """Dihedral group"""
+    return twisted(cyclic(N), lambda x: (N - x) % N)
+
+
+@jaxtyped(typechecker=beartype)
+def holoconj(group: Group, a: Any) -> Group:
+    """
+    Given group G, returns semidirect G x Z(m) where Z(m) acts on G by conjugation by elem
+    and m is the order of elem. (This is a subgroup of hol(G))
+    """
+    m = group.order(a)
+
+    def phi(x):
+        def aut(y):
+            ret = y
+            for _ in range(x):
+                ret = group.mult(group.mult(a, ret), group.inv(a))
+            return ret
+
+        return aut
+
+    return semidirect_product(group, cyclic(m), phi)
 
 
 @jaxtyped(typechecker=beartype)
@@ -200,10 +240,12 @@ class GroupData(Dataset):
         for group in self.groups:
             if names_dict[group.name] > 0:
                 new_name = f"{group.name}_{names_dict[group.name]+1}"
-                warnings.warn(f"Duplicate group name: {group.name}. Deduplicating to {new_name}")
+                warnings.warn(
+                    f"Duplicate group name: {group.name}. Deduplicating to {new_name}"
+                )
                 group.name = new_name
             names_dict[group.name] += 1
-            
+
         self.group_sets = [
             {
                 (i, j, group.cayley_table[i, j].item())
@@ -220,7 +262,9 @@ class GroupData(Dataset):
         else:
             self.group_deltas = [
                 self.group_sets[i]
-                - set.union(*[self.group_sets[j] for j in range(self.num_groups) if j != i])
+                - set.union(
+                    *[self.group_sets[j] for j in range(self.num_groups) if j != i]
+                )
                 for i in range(len(self.groups))
             ]
 
