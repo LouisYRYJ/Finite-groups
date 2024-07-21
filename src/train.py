@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import torch as t
 import os
 from torch.utils.data import DataLoader
