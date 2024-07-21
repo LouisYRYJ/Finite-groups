@@ -33,16 +33,16 @@ class Parameters:
     hidden_size: int = 64
     epochs: int = 2000
     batch_size: int = 64
-    batched: bool = False # if false, batch is entire data set
+    batched: bool = False  # if false, batch is entire data set
     activation: str = "relu"  # gelu or relu
     weight_decay: float = 2e-4
     lr: float = 0.01
-    beta1: float= 0.9
-    beta2: float= 0.98
+    beta1: float = 0.9
+    beta2: float = 0.98
     warmup_steps = 0
     optimizer: str = "adam"  # adamw or adam or sgd
     checkpoint: int = 3
-    name: str= ""
+    name: str = ""
     seed: int = 42
     group_string: str = "Z(48,2);twZ(48)"
     intersect_frac: float = 1.0
@@ -133,7 +133,9 @@ def train(model, group_dataset, params):
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
                 log_dict[f"G{i}_grokked_{group.name}"] = (
-                    (loss_dict[f"G{i}_acc_{group.name}"] >= params.thresh_grok).sum().item()
+                    (loss_dict[f"G{i}_acc_{group.name}"] >= params.thresh_grok)
+                    .sum()
+                    .item()
                 )
             if checkpoint_every is not None and epoch % checkpoint_every == 0:
                 if params.save_weights:
@@ -176,7 +178,6 @@ def train(model, group_dataset, params):
 
         wandb.log(log_dict)
     wandb.finish()
-
 
     t.save(
         model.state_dict(),

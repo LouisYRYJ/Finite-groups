@@ -12,50 +12,48 @@ from copy import deepcopy
 class MLP(nn.Module):
     def __init__(self, params):
         super().__init__()
-        self.Embedding_left = nn.Embedding(params.N, params.embed_dim)
-        self.Embedding_right = nn.Embedding(params.N, params.embed_dim)
+        self.embedding_left = nn.Embedding(params.N, params.embed_dim)
+        self.embedding_right = nn.Embedding(params.N, params.embed_dim)
         self.linear = nn.Linear(params.embed_dim * 2, params.hidden_size, bias=True)
         if params.activation == "gelu":
             self.activation = nn.GELU()
         if params.activation == "relu":
             self.activation = nn.ReLU()
-        self.Umbedding = nn.Linear(params.hidden_size, params.N, bias=True)
+        self.unembedding = nn.Linear(params.hidden_size, params.N, bias=True)
 
     def forward(self, a):
-        x1 = self.Embedding_left(a[0])
-        x2 = self.Embedding_right(a[1])
+        x1 = self.embedding_left(a[0])
+        x2 = self.embedding_right(a[1])
         x12 = t.cat([x1, x2], -1)
         hidden = self.linear(x12)
         hidden = self.activation(hidden)
-        out = self.Umbedding(hidden)
+        out = self.unembedding(hidden)
         return out
 
 
 class MLP2(nn.Module):
     def __init__(self, params):
         super().__init__()
-        self.Embedding_left = nn.Embedding(params.N, params.embed_dim)
-        self.Embedding_right = nn.Embedding(params.N, params.embed_dim)
+        self.embedding_left = nn.Embedding(params.N, params.embed_dim)
+        self.embedding_right = nn.Embedding(params.N, params.embed_dim)
         self.linear_left = nn.Linear(params.embed_dim, params.hidden_size, bias=False)
-        self.linear_right = nn.Linear(
-            params.embed_dim, params.hidden_size, bias=False
-        )
+        self.linear_right = nn.Linear(params.embed_dim, params.hidden_size, bias=False)
         if params.activation == "gelu":
             self.activation = nn.GELU()
         if params.activation == "relu":
             self.activation = nn.ReLU()
-        self.Umbedding = nn.Linear(params.hidden_size, params.N, bias=False)
+        self.unembedding = nn.Linear(params.hidden_size, params.N, bias=False)
 
     def forward(self, a):
 
         a_1, a_2 = a[:, 0], a[:, 1]
-        x1 = self.Embedding_left(a_1)
-        x2 = self.Embedding_right(a_2)
+        x1 = self.embedding_left(a_1)
+        x2 = self.embedding_right(a_2)
         hidden_x1 = self.linear_left(x1)
         hidden_x2 = self.linear_right(x2)
         hidden_sum = hidden_x1 + hidden_x2
         hidden = self.activation(hidden_sum)
-        out = self.Umbedding(hidden)
+        out = self.unembedding(hidden)
         return out
 
 
@@ -107,9 +105,9 @@ class MLP3(nn.Module):
             raise ValueError("Activation not recognized")
 
     def __getitem__(self, slice):
-        '''
+        """
         Returns a new model with parameters sliced along the instances dimension.
-        '''
+        """
         ret = deepcopy(self)
         for name, param in self.named_parameters():
             sliced_param = param[slice].clone()

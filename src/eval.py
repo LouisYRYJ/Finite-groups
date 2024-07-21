@@ -3,15 +3,16 @@ from model_viz import (
     plot_gif,
     viz_compare_llc,
     fourier_basis_embedding,
+    indicator_table,
 )
 import matplotlib.pyplot as plt
 import json
 import os
 from train import Parameters
-from model import MLP2
+from model import MLP2, MLP3
 import torch as t
 from group_data import GroupData
-from utils import random_indices, test_loss, measure_llc
+from utils import test_loss, measure_llc
 from torch.utils.data import DataLoader
 import re
 from dataclasses import dataclass
@@ -121,15 +122,31 @@ def evaluate(list_of_model_paths, params, parent_path, evalparams):
         plot_gif(list_of_figures=list_of_figures, frame_duration=0.01, path=evals_path)
 
 
+def load_model(path, instance):
+
+    with open(path + "/params.json", "r") as f:
+        json_str = f.read()
+        params = Parameters(**json.loads(json_str))
+
+    group_dataset = GroupData(params=params)
+    with t.no_grad():
+        model = MLP3(group_dataset.N, params=params)
+
+        model_path = os.path.join(path, "ckpts/final.pt")
+
+        model.load_state_dict(t.load(model_path))
+
+        model_instance = model[instance]
+
+    return plot_indicator_table(model=model_instance, params=params, save=True)
+
+
 if __name__ == "__main__":
 
-    directory = "models/model_2024-07-09 16:56:04"
+    directory = "src/models/2024_07_21_12_09_09_Z_48_2__twZ_48_"
+    instance = 0
 
     if not os.path.exists("evals"):
         os.mkdir("evals")
 
-    models, params = load_model_paths(directory)
-    evalparams = EvalParameters(
-        LLC_measure=False, start=330, frequency=10, fourier=True
-    )
-    evaluate(models, params, parent_path=directory, evalparams=evalparams)
+    load_model(path=directory, instance=0)

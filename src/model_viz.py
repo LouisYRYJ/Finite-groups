@@ -8,27 +8,38 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from utils import make_fourier_basis
 import os
+from group_data import string_to_groups
 
 
 def model_table(model, params):
     """Returns the models current multiplication table"""
+
+    groups = string_to_groups(params.group_string)
+    group = groups[0]
+    cardinality = len(group)
+
+    group_set = [
+        [i, j, group.cayley_table[i, j].item()]
+        for i in range(cardinality)
+        for j in range(cardinality)
+    ]
+
+    input = t.tensor([g[:2] for g in group_set], dtype=int)
+
     with t.no_grad():
         model.eval()
-        test_labels_x = t.tensor(
-            [num for num in range(params.N) for _ in range(params.N)]
-        )
-        test_labels_y = t.tensor([num % params.N for num in range(params.N * params.N)])
 
-        test_labels = t.stack((test_labels_x, test_labels_y), dim=1)
-        logits = model(test_labels)  # shape N^2 x N
+        logits = model(
+            input
+        )  # shape N^2 x instance x N, this is hacky since the model forward creates params.n.instance
 
-        max_prob_entry = t.argmax(logits, dim=-1).squeeze(-1)  # shape N^2 x 1
+        max_prob_entry = t.argmax(logits, dim=-1)[:, 0].squeeze(-1)  # shape N^2 x 1
 
-        z = rearrange(max_prob_entry, " (n m) -> n m", n=params.N)  # shape N x N
+        z = rearrange(max_prob_entry, " (n m) -> n m", n=cardinality)  # shape N x N
     return z
 
 
-def indicator_table(model, params, group_1, group_2):
+def indicator_table(model, params):
     """Takes a multiplication table z and returns a matrix with entry A[i][j]:
     • 1 if z[i][j]=m_1(i,j)
     • 2 if z[i][j]=m_2(i,j)
@@ -37,20 +48,56 @@ def indicator_table(model, params, group_1, group_2):
     """
     z = model_table(model, params)
 
-    indicator = t.zeros((params.N, params.N), dtype=t.long)
-    for i in range(params.N):
-        for j in range(params.N):
-            if z[i][j] == group_1[i][j]:
+    groups = string_to_groups(params.group_string)
+    cardinality = len(groups[0])
+
+    indicator = t.zeros((cardinality, cardinality), dtype=t.long)
+    for i in range(cardinality):
+        for j in range(cardinality):
+            if z[i][j] == (groups[0].cayley_table)[i][j]:
                 indicator[i][j] += 1
-            if z[i][j] == group_2[i][j]:
+            if z[i][j] == (groups[1].cayley_table)[i][j]:
                 indicator[i][j] += 2
     return indicator
 
 
-def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
+def plot_indicator_table(model, params, save=False):
 
-    row_labels = [f"Row {i}" for i in range(100)]
-    col_labels = [f"Col {j}" for j in range(100)]
+    groups = string_to_groups(params.group_string)
+    group = groups[0]
+    cardinality = len(group)
+
+    group_set = [
+        [i, j, group.cayley_table[i, j].item()]
+        for i in range(cardinality)
+        for j in range(cardinality)
+    ]
+
+    input = t.tensor([g[:2] for g in group_set], dtype=int)
+
+    with t.no_grad():
+        model.eval()
+
+        logits = model(
+            input
+        )  # shape N^2 x instance x N, this is hacky since the model forward creates params.n.instance
+
+        max_prob_entry = t.argmax(logits, dim=-1)[:, 0].squeeze(-1)  # shape N^2 x 1
+
+        output_matrix = rearrange(
+            max_prob_entry, " (n m) -> n m", n=cardinality
+        )  # shape N x N
+
+        hover_labels = [
+            [
+                str(groups[1].idx_to_elem(output_matrix[j][i]))
+                for i in range(cardinality)
+            ]
+            for j in range(cardinality)
+        ]
+
+    row_labels = [str(g) for g in groups[0].elements]
+    col_labels = row_labels
 
     custom_colorscale = [
         [0, "#FFFFFF"],  # For value 0
@@ -65,38 +112,49 @@ def plot_indicator_table(model, epoch, params, group_1, group_2, save=False):
 
     fig = go.Figure(
         data=go.Heatmap(
-            z=indicator_table(model, params, group_1=group_1, group_2=group_2).tolist(),
+            z=indicator_table(model, params).tolist(),
             showscale=False,
             colorscale=custom_colorscale,
             x=col_labels,
             y=row_labels,
             zmin=0,
             zmax=3,
+            customdata=hover_labels,
+            # Customizing hover text using hovertemplate
+            hovertemplate="x=%{x}<br>"
+            + "y=%{y}<br>"
+            + "z=%{customdata}<extra></extra>",
         ),
     )
 
     fig.update_layout(
-        title=f"Epoch {epoch}",
+        title=f"Final run",
         xaxis={
-            "showgrid": False,
+            "showgrid": True,
             "side": "top",
-            "ticks": "",
+            "ticks": "outside",
             "tickmode": "array",
-            "tickvals": [],
+            "tickvals": [i for i in range(len(groups[0]))],
+            "ticktext": row_labels,
         },
         yaxis={
-            "showgrid": False,
-            "autorange": "reversed",
-            "ticks": "",
+            "showgrid": True,
+            # "autorange": "reversed",
+            "side": "left",
+            "ticks": "outside",
             "tickmode": "array",
-            "tickvals": [],
+            "tickvals": [i for i in range(len(groups[0]))],
+            "ticktext": col_labels,
         },
         height=900,
         width=900,
     )
 
     if save == True:
-        fig.write_html("./Group addition/plots/plot_{}.html".format(epoch))
+        if not os.path.exists("src/plots"):
+            os.mkdir("src/plots")
+
+        fig.write_html("./src/plots/plot_final.html")
     return fig
 
 
