@@ -211,3 +211,11 @@ def autocast(x: Any) -> Any:
         return float(x)
     except:
         return x
+
+# Use this to quickly create a params object for testing.
+# Please don't use for anything else; very hacky.
+class dotdict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+    __deepcopy__ = None

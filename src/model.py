@@ -6,6 +6,7 @@ from typing import Optional, Callable, Union, List, Tuple
 import einops
 import numpy as np
 from beartype import beartype
+from copy import deepcopy
 
 
 class MLP(nn.Module):
@@ -69,12 +70,14 @@ def custom_kaiming(dims):
 
 
 class MLP3(nn.Module):
+    # TODO: It's probably better practice to explicitly list the args (instances, embed_dim, etc)
+    # instead of using the params object
     def __init__(self, N, params):
         super().__init__()
         self.params = params
         self.N = N
 
-        self.Embedding_left = custom_kaiming(
+        self.embedding_left = custom_kaiming(
             [
                 params.instances,
                 self.N,
@@ -82,7 +85,7 @@ class MLP3(nn.Module):
             ]
         )
 
-        self.Embedding_right = custom_kaiming(
+        self.embedding_right = custom_kaiming(
             [params.instances, self.N, params.embed_dim]
         )
 
@@ -90,7 +93,7 @@ class MLP3(nn.Module):
             [params.instances, params.embed_dim, params.hidden_size]
         )
 
-        self.Umbedding = custom_kaiming(
+        self.unembedding = custom_kaiming(
             [params.instances, params.hidden_size, self.N]
         )
 
@@ -103,7 +106,18 @@ class MLP3(nn.Module):
         else:
             raise ValueError("Activation not recognized")
 
-    # entries =2
+    def __getitem__(self, slice):
+        '''
+        Returns a new model with parameters sliced along the instances dimension.
+        '''
+        ret = deepcopy(self)
+        for name, param in self.named_parameters():
+            sliced_param = param[slice].clone()
+            if isinstance(slice, int):
+                sliced_param = sliced_param.unsqueeze(0)
+            setattr(ret, name, nn.Parameter(sliced_param))
+        return ret
+
     @jaxtyped(typechecker=beartype)
     def forward(
         self, a: Int[t.Tensor, "batch_size entries"]
@@ -120,12 +134,12 @@ class MLP3(nn.Module):
 
         x_1 = einops.einsum(
             a_1_onehot,
-            self.Embedding_left,
+            self.embedding_left,
             "batch_size instances d_vocab, instances d_vocab embed_dim -> batch_size instances embed_dim",
         )
         x_2 = einops.einsum(
             a_2_onehot,
-            self.Embedding_right,
+            self.embedding_right,
             "batch_size instances d_vocab, instances d_vocab embed_dim -> batch_size instances embed_dim",
         )
 
@@ -137,7 +151,7 @@ class MLP3(nn.Module):
 
         out = einops.einsum(
             self.activation(hidden),
-            self.Umbedding,
+            self.unembedding,
             "batch_size instances hidden, instances hidden d_vocab-> batch_size instances d_vocab ",
         )
         return out
