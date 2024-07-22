@@ -127,9 +127,13 @@ def train(model, group_dataset, params):
             loss_dict["epoch_train_acc"] = epoch_train_acc
             loss_dict["epoch_train_margin"] = epoch_train_margin
             log_dict = {}
-            for inst in range(params.instances):
-                for k in loss_dict:
+            for k in loss_dict:
+                for inst in range(params.instances):
                     log_dict[f"{k}_{inst:03d}"] = loss_dict[k][inst].item()
+                log_dict[f"{k}_mean"] = loss_dict[k].mean().item()
+                log_dict[f"{k}_median"] = loss_dict[k].median().item()
+                log_dict[f"{k}_max"] = loss_dict[k].max().item()
+                log_dict[f"{k}_min"] = loss_dict[k].min().item()
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
                 log_dict[f"G{i}_grokked_{group.name}"] = (
