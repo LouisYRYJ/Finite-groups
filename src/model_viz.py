@@ -90,7 +90,7 @@ def plot_indicator_table(model, params, save=False):
 
         hover_labels = [
             [
-                str(groups[1].idx_to_elem(output_matrix[j][i]))
+                str(groups[0].idx_to_elem(output_matrix[j][i]))
                 for i in range(cardinality)
             ]
             for j in range(cardinality)

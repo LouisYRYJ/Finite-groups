@@ -85,7 +85,7 @@ def clamped(N: int) -> Group:
     cayley_table = t.zeros((N, N), dtype=t.int64)
     for i in range(N):
         for j in range(N):
-            cayley_table[i, j] = max(i + j, N)
+            cayley_table[i, j] = min(i + j, N-1)
     return Group(elements, cayley_table)
 
 
@@ -280,6 +280,7 @@ class GroupData(Dataset):
             print(f"Added {len(to_add)} elements from group {i}: {self.groups[i].name}")
 
         self.train_data = random_frac(list(train_set), params.train_frac)
+        print(f"Taking random subset:", frac_str(len(self.train_data), len(train_set)))
         print(f"Train set size: {len(self.train_data)}")
 
     def __getitem__(self, idx):

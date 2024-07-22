@@ -138,7 +138,7 @@ def load_model(path, instance):
 
         model_instance = model[instance]
 
-    return plot_indicator_table(model=model_instance, params=params, save=True)
+    return plot_indicator_table(model=model_instance, params=params, save=False)
 
 
 if __name__ == "__main__":
