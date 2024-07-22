@@ -8,6 +8,8 @@ from utils import *
 from itertools import product
 from collections import defaultdict
 import warnings
+from collections import Counter
+import matplotlib.pyplot as plt
 import math
 
 
@@ -93,7 +95,7 @@ def clamped(N: int) -> Group:
     cayley_table = t.zeros((N, N), dtype=t.int64)
     for i in range(N):
         for j in range(N):
-            cayley_table[i, j] = min(i + j, N-1)
+            cayley_table[i, j] = min(i + j, N - 1)
     return Group(elements, cayley_table)
 
 
@@ -333,3 +335,20 @@ class GroupData(Dataset):
 
     def __len__(self):
         return len(self.train_data)
+
+    def frequency_histogram(self):
+        self.distribuition = [x[2] for x in self.train_data]
+        frequency_count = Counter(self.distribuition)
+        x = list(frequency_count.keys())
+        y = list(frequency_count.values())
+
+        sorted_pairs = sorted(zip(x, y))
+        x_sorted, y_sorted = zip(*sorted_pairs)
+        plt.figure(figsize=(10, 6))
+        plt.bar(x_sorted, y_sorted)
+
+        plt.xlabel("Integers")
+        plt.ylabel("Frequency")
+        plt.title("Frequency Plot of Integers")
+
+        return plt
