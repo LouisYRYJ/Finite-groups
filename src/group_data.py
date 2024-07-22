@@ -3,11 +3,12 @@ import torch as t
 import random
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
-from typing import Callable, Union, Any
+from typing import Callable, Union, Any, Optional
 from utils import *
 from itertools import product
 from collections import defaultdict
 import warnings
+import math
 
 
 # TODO: Find a better place to put this.
@@ -45,6 +46,13 @@ class Group:
 
     def __len__(self):
         return len(self.elements)
+
+    def cayley_set(self):
+        return {
+            (i, j, self.cayley_table[i, j].item())
+            for i in range(len(self))
+            for j in range(len(self))
+        }
 
     def mult(self, a, b):
         return self.idx_to_elem(
@@ -151,7 +159,7 @@ def D(N: int) -> Group:
 def holoconj(group: Group, a: Any) -> Group:
     """
     Given group G, returns semidirect G x Z(m) where Z(m) acts on G by conjugation by elem
-    and m is the order of elem. (This is a subgroup of hol(G))
+    and m is the order of elem.
     """
     m = group.order(a)
 
@@ -202,6 +210,47 @@ def XFam(N: int) -> list[Group]:
             ret.append(group)
     return ret
 
+    
+
+def abFam(a: int, b:int) -> Optional[list[Group]]:
+    """
+    Returns two semidirect products Z/ab x Z/m where the automorphisms are
+    multiplication by either r or a-r, and r is chosen such that
+    ord(r)=ord(m-r)=m.
+    """
+    base_group = Z(a * b)
+
+    # multiplicative order
+    def order(c):
+        assert c in base_group.elements
+        assert math.gcd(c, a * b) == 1, 'c must be unit of Z(a*b)'
+        x = c
+        n = 1
+        while x != 1:
+            x = (x * c) % (a * b)
+            n += 1
+        return n
+
+    min_r = None
+    min_s = None
+    min_lcm = None
+    for r in range(2, a * b):
+        s = (a - r) % (a * b)
+        if s == 1 or math.gcd(r, a * b) != 1 or math.gcd(s, a * b) != 1:
+            continue
+        lcm = math.lcm(order(r), order(s))
+        if min_r is None or lcm < min_lcm:
+            min_lcm = lcm
+            min_r = r
+            min_s = s
+
+    r, s, m = min_r, min_s, min_lcm
+    print(f'Found r={r} and s={s} of order {m}')
+    # Make sure to capture r in the nested lambdas
+    phi_r = lambda x, r=r: lambda y, r=r: (y * r ** x) % (a * b)
+    phi_s = lambda x, s=s: lambda y, s=s: (y * s ** x) % (a * b)
+    return [semidirect_product(base_group, Z(m), phi=phi) for phi in [phi_r, phi_s]]
+
 
 @jaxtyped(typechecker=beartype)
 def string_to_groups(strings: Union[str, tuple[str, ...]]) -> list[Group]:
@@ -246,14 +295,7 @@ class GroupData(Dataset):
                 group.name = new_name
             names_dict[group.name] += 1
 
-        self.group_sets = [
-            {
-                (i, j, group.cayley_table[i, j].item())
-                for i in range(self.N)
-                for j in range(self.N)
-            }
-            for group in self.groups
-        ]
+        self.group_sets = [group.cayley_set() for group in self.groups]
 
         if not isinstance(params.delta_frac, list):
             params.delta_frac = [params.delta_frac] * self.num_groups
