@@ -350,5 +350,3 @@ class GroupData(Dataset):
         plt.xlabel("Integers")
         plt.ylabel("Frequency")
         plt.title("Frequency Plot of Integers")
-
-        return plt
