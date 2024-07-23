@@ -214,7 +214,7 @@ def XFam(N: int) -> list[Group]:
 
     
 
-def abFam(a: int, b:int) -> Optional[list[Group]]:
+def abFam(a: int, b:int, r=None) -> Optional[list[Group]]:
     """
     Returns two semidirect products Z/ab x Z/m where the automorphisms are
     multiplication by either r or a-r, and r is chosen such that
@@ -236,11 +236,13 @@ def abFam(a: int, b:int) -> Optional[list[Group]]:
     min_r = None
     min_s = None
     min_lcm = None
-    for r in range(2, a * b):
+    r_range = [r] if r else range(2, a * b)
+    for r in r_range:
         s = (a - r) % (a * b)
         if s == 1 or math.gcd(r, a * b) != 1 or math.gcd(s, a * b) != 1:
             continue
         lcm = math.lcm(order(r), order(s))
+        # print('abFam:', r, s, lcm)
         if min_r is None or lcm < min_lcm:
             min_lcm = lcm
             min_r = r
