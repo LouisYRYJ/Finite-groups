@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import random
-from model import MLP2, MLP3
+from model import MODEL_DICT
 import wandb
 import dataclasses
 from dataclasses import dataclass
@@ -53,6 +53,7 @@ class Parameters:
     wandb: bool = False
     thresh_grok: float = 0.95
     project: str = "group generalization"
+    model: str = "MLP3"
 
 
 def train(model, group_dataset, params):
@@ -210,5 +211,5 @@ if __name__ == "__main__":
     if not params.name:
         params.name = params.group_string
     group_dataset = GroupData(params=params)
-    model = MLP3(group_dataset.N, params=params).to(device)
+    model = MODEL_DICT[params.model](group_dataset.N, params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)

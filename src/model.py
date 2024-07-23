@@ -153,3 +153,95 @@ class MLP3(nn.Module):
             "batch_size instances hidden, instances hidden d_vocab-> batch_size instances d_vocab ",
         )
         return out
+
+
+class MLP4(nn.Module):
+    """
+    Architecture studied in Morwani et al. "Feature emergence via margin maximization"
+    """
+
+    # TODO: It's probably better practice to explicitly list the args (instances, embed_dim, etc)
+    # instead of using the params object
+    def __init__(self, N, params):
+        super().__init__()
+        self.params = params
+        self.N = N
+
+        self.embedding_left = custom_kaiming(
+            [
+                params.instances,
+                self.N,
+                params.embed_dim,
+            ]
+        )
+
+        self.embedding_right = custom_kaiming(
+            [params.instances, self.N, params.embed_dim]
+        )
+
+        self.unembedding = custom_kaiming([params.instances, params.embed_dim, self.N])
+
+        if params.activation == "gelu":
+            self.activation = nn.GELU()
+        elif params.activation == "relu":
+            self.activation = nn.ReLU()
+        elif params.activation == "linear":
+            self.activation = lambda x: x
+        elif params.activation == "square":
+            self.activation = lambda x: x**2
+        else:
+            raise ValueError("Activation not recognized")
+
+    def __getitem__(self, slice):
+        """
+        Returns a new model with parameters sliced along the instances dimension.
+        """
+        ret = deepcopy(self)
+        for name, param in self.named_parameters():
+            sliced_param = param[slice].clone()
+            if isinstance(slice, int):
+                sliced_param = sliced_param.unsqueeze(0)
+            setattr(ret, name, nn.Parameter(sliced_param))
+        return ret
+
+    @jaxtyped(typechecker=beartype)
+    def forward(
+        self, a: Int[t.Tensor, "batch_size entries"]
+    ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
+
+        a_instances = einops.repeat(
+            a, " batch_size entries -> batch_size n entries", n=self.params.instances
+        )  # batch_size instances entries
+
+        a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
+
+        a_1_onehot = F.one_hot(a_1, num_classes=self.N).float()
+        a_2_onehot = F.one_hot(a_2, num_classes=self.N).float()
+
+        x_1 = einops.einsum(
+            a_1_onehot,
+            self.embedding_left,
+            "batch_size instances d_vocab, instances d_vocab embed_dim -> batch_size instances embed_dim",
+        )
+        x_2 = einops.einsum(
+            a_2_onehot,
+            self.embedding_right,
+            "batch_size instances d_vocab, instances d_vocab embed_dim -> batch_size instances embed_dim",
+        )
+
+        hidden = x_1 + x_2
+
+        out = einops.einsum(
+            self.activation(hidden),
+            self.unembedding,
+            "batch_size instances embed_dim, instances embed_dim d_vocab-> batch_size instances d_vocab ",
+        )
+        return out
+
+
+MODEL_DICT = {
+    "MLP": MLP,
+    "MLP2": MLP2,
+    "MLP3": MLP3,
+    "MLP4": MLP4,
+}
