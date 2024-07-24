@@ -301,7 +301,7 @@ class GroupData(Dataset):
 
         self.group_sets = [group.cayley_set() for group in self.groups]
 
-        if isinstance(params.delta_frac, float):
+        if isinstance(params.delta_frac, Union[int, float]):
             params.delta_frac = [params.delta_frac] * self.num_groups
         if len(self.groups) == 1:
             self.group_deltas = [set()]
