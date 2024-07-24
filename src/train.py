@@ -21,6 +21,7 @@ import gc
 from typing import Optional, Union
 import re
 import warnings
+import sys
 
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -46,7 +47,7 @@ class Parameters:
     seed: int = 42
     group_string: str = "Z(48,2);twZ(48)"
     intersect_frac: float = 1.0
-    delta_frac: Union[tuple[float], float] = 0.0
+    delta_frac: Union[float, list[float]] = 0.0
     train_frac: float = 1.0
     save_weights: bool = False
     load_weights: str = ""
@@ -54,6 +55,7 @@ class Parameters:
     thresh_grok: float = 0.95
     project: str = "group generalization"
     model: str = "MLP3"
+    cmd: str = ""
 
 
 def train(model, group_dataset, params):
@@ -196,20 +198,28 @@ def train(model, group_dataset, params):
         traj = load_loss_trajectory(directory_path)
         is_grokked_summary(traj, params.instances, thresh_grok=params.thresh_grok)
 
-
-if __name__ == "__main__":
+        
+def parse() -> Parameters:
     params = Parameters()
     parser = argparse.ArgumentParser()
     for field in dataclasses.fields(params):
         if field.type == bool:
             parser.add_argument(f"--{field.name}", action="store_true")
+        elif field.name == 'cmd':
+            continue
         else:
-            parser.add_argument(f"--{field.name}", type=field.type)
+            parser.add_argument(f"--{field.name}", type=str)
     args = parser.parse_args()
-    arg_vars = {k: v for k, v in vars(args).items() if v is not None}
+    arg_vars = {k: autocast(v) for k, v in vars(args).items() if v is not None}
     params.__dict__.update(arg_vars)
     if not params.name:
         params.name = params.group_string
+    params.cmd = ' '.join(sys.argv)
+    return params
+
+
+if __name__ == "__main__":
+    params = parse()
     group_dataset = GroupData(params=params)
     model = MODEL_DICT[params.model](group_dataset.N, params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)

@@ -301,7 +301,7 @@ class GroupData(Dataset):
 
         self.group_sets = [group.cayley_set() for group in self.groups]
 
-        if not isinstance(params.delta_frac, list):
+        if isinstance(params.delta_frac, float):
             params.delta_frac = [params.delta_frac] * self.num_groups
         if len(self.groups) == 1:
             self.group_deltas = [set()]
@@ -326,8 +326,9 @@ class GroupData(Dataset):
             print(f"Added {len(to_add)} elements from group {i}: {self.groups[i].name}")
 
         self.train_data = random_frac(list(train_set), params.train_frac)
-        print(f"Taking random subset:", frac_str(len(self.train_data), len(train_set)))
-        print(f"Train set size: {len(self.train_data)}")
+        if params.train_frac < 1.:
+            print(f"Taking random subset:", frac_str(len(self.train_data), len(train_set)))
+        print(f"Train set size: {frac_str(len(self.train_data), self.N**2)}")
 
     def __getitem__(self, idx):
         return (
