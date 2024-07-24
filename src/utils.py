@@ -86,8 +86,12 @@ def test_loss(
         labels = einops.rearrange(group.cayley_table, "a b -> (a b)").to(device)
         loss = get_cross_entropy(logits, labels)
         accuracy = get_accuracy(logits, labels)
-        loss_dict[f"G{i}_loss_{group.name}"] = loss
-        loss_dict[f"G{i}_acc_{group.name}"] = accuracy
+        # Don't add group name to wandb logs; it makes plot searching less convenient
+        # Instead store group names in wandb config (in train.py)
+        loss_dict[f"G{i}_loss"] = loss
+        loss_dict[f"G{i}_acc"] = accuracy
+        # loss_dict[f"G{i}_loss_{group.name}"] = loss
+        # loss_dict[f"G{i}_acc_{group.name}"] = accuracy
 
     return loss_dict
 

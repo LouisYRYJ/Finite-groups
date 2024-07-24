@@ -55,22 +55,31 @@ class Parameters:
     thresh_grok: float = 0.95
     project: str = "group generalization"
     model: str = "MLP3"
-    cmd: str = ""
 
 
 def train(model, group_dataset, params):
     if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
+    np.random.seed(params.seed)
+    random.seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     if not params.wandb:
         os.environ["WANDB_MODE"] = "disabled"
         warnings.warn("Wandb is disabled!")
+    if isinstance(params.name, Union[list, tuple]):
+        # autocast splits all strings containing ';'
+        # but we don't want params.name to be split
+        # TODO: find a less annoying way to do params parsing
+        params.name = ';'.join(params.name)
+    wandb_config = params.__dict__
+    wandb_config['groups'] = [group.name for group in group_dataset.groups]
+    wandb_config['cmd'] = ' '.join(sys.argv)
     wandb.init(
         entity="neural_fate",
         project=params.project,
         name=f"{current_time}_{params.name}",
-        config=params.__dict__,
+        config=wandb_config,
     )
 
     if not params.batched:
@@ -139,8 +148,8 @@ def train(model, group_dataset, params):
                 log_dict[f"{k}_min"] = loss_dict[k].min().item()
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
-                log_dict[f"G{i}_grokked_{group.name}"] = (
-                    (loss_dict[f"G{i}_acc_{group.name}"] >= params.thresh_grok)
+                log_dict[f"G{i}_grokked"] = (
+                    (loss_dict[f"G{i}_acc"] >= params.thresh_grok)
                     .sum()
                     .item()
                 )
@@ -205,8 +214,6 @@ def parse() -> Parameters:
     for field in dataclasses.fields(params):
         if field.type == bool:
             parser.add_argument(f"--{field.name}", action="store_true")
-        elif field.name == 'cmd':
-            continue
         else:
             parser.add_argument(f"--{field.name}", type=str)
     args = parser.parse_args()
@@ -214,7 +221,6 @@ def parse() -> Parameters:
     params.__dict__.update(arg_vars)
     if not params.name:
         params.name = params.group_string
-    params.cmd = ' '.join(sys.argv)
     return params
 
 
