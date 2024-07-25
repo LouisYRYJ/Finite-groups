@@ -11,6 +11,7 @@ import os
 from group_data import string_to_groups
 from itertools import product
 from typing import Union
+from tqdm import tqdm
 
 
 def model_table(model, instance=0):
@@ -39,7 +40,8 @@ def plot_table(models, params, instance=0, save=False):
     row_labels = [str(g) for g in groups[0].elements]
     col_labels = row_labels
 
-    for model in models:
+    itr = models if len(models) < 5 else tqdm(models)
+    for model in itr:
         table = model_table(model, instance=instance)
         hover_labels = [
             [group.idx_to_elem(table[j][i]) for i in range(model.N)]
@@ -82,8 +84,8 @@ def plot_table(models, params, instance=0, save=False):
             "tickvals": [i for i in range(model.N)],
             "ticktext": col_labels,
         },
-        height=600,
-        width=600,
+        height=900,
+        width=900,
     )
     sliders = [
         dict(
@@ -94,15 +96,15 @@ def plot_table(models, params, instance=0, save=False):
                         [f"frame{k}"],
                         dict(
                             mode="immediate",
-                            frame=dict(duration=300, redraw=True),
-                            transition=dict(duration=300),
+                            frame=dict(duration=100, redraw=True),
+                            transition=dict(duration=100),
                         ),
                     ],
                     label=f"{k+1}",
                 )
                 for k in range(len(frames))
             ],
-            transition=dict(duration=300),
+            transition=dict(duration=100),
             x=0,
             y=0,
             currentvalue=dict(
@@ -121,9 +123,9 @@ def plot_table(models, params, instance=0, save=False):
                 args=[
                     None,
                     {
-                        "frame": {"duration": 500, "redraw": True},
+                        "frame": {"duration": 100, "redraw": True},
                         "fromcurrent": True,
-                        "transition": {"duration": 300, "easing": "quadratic-in-out"},
+                        "transition": {"duration": 100, "easing": "quadratic-in-out"},
                     },
                 ],
             ),
@@ -152,7 +154,7 @@ def plot_table(models, params, instance=0, save=False):
     return fig
 
 
-def indicator_table(model, params, instance):
+def indicator_table(model, params, instance=0):
     """Takes a multiplication table z and returns a matrix with entry A[i][j]:
     • 1 if z[i][j]=m_1(i,j)
     • 2 if z[i][j]=m_2(i,j)

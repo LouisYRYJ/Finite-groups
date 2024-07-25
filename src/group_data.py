@@ -257,7 +257,7 @@ def abFam(a: int, b:int, r=None) -> Optional[list[Group]]:
 
 
 @jaxtyped(typechecker=beartype)
-def string_to_groups(strings: Union[str, tuple[str, ...]]) -> list[Group]:
+def string_to_groups(strings: Union[str, tuple[str, ...], list[str]]) -> list[Group]:
     """
     Input string s should be calls to above functions (returning NxN multiplication tables), delimited by ';'
     """
