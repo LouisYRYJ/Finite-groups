@@ -9,44 +9,157 @@ import plotly.express as px
 from utils import make_fourier_basis
 import os
 from group_data import string_to_groups
+from itertools import product
+from typing import Union
 
 
-def model_table(model, params):
-    """Returns the models current multiplication table"""
+def model_table(model, instance=0):
+    """Returns the model's current multiplication table"""
 
-    groups = string_to_groups(params.group_string)
-    group = groups[0]
-    cardinality = len(group)
-
-    group_set = [
-        [i, j, group.cayley_table[i, j].item()]
-        for i in range(cardinality)
-        for j in range(cardinality)
-    ]
-
-    input = t.tensor([g[:2] for g in group_set], dtype=int)
+    input = t.tensor(list(product(range(model.N), repeat=2)), dtype=int)
 
     with t.no_grad():
         model.eval()
-
-        logits = model(
-            input
-        )  # shape N^2 x instance x N, this is hacky since the model forward creates params.n.instance
-
-        max_prob_entry = t.argmax(logits, dim=-1)[:, 0].squeeze(-1)  # shape N^2 x 1
-
-        z = rearrange(max_prob_entry, " (n m) -> n m", n=cardinality)  # shape N x N
+        logits = model(input)  # shape N^2 x instance x N
+        max_prob_entry = t.argmax(logits, dim=-1)[:, instance]  # shape N^2
+        z = rearrange(max_prob_entry, " (n m) -> n m", n=model.N)  # shape N x N
     return z
 
 
-def indicator_table(model, params):
+def plot_table(models, params, instance=0, save=False):
+    """
+    Animated plot of the multiplication tables of models
+    """
+    if not isinstance(models, Union[list, tuple]):
+        models = [models]
+
+    groups = string_to_groups(params.group_string)
+    group = groups[0]
+    heatmaps = []
+    row_labels = [str(g) for g in groups[0].elements]
+    col_labels = row_labels
+
+    for model in models:
+        table = model_table(model, instance=instance)
+        hover_labels = [
+            [group.idx_to_elem(table[j][i]) for i in range(model.N)]
+            for j in range(model.N)
+        ]
+        heatmaps.append(
+            go.Heatmap(
+                z=table,
+                showscale=False,
+                x=col_labels,
+                y=row_labels,
+                customdata=hover_labels,
+                # Customizing hover text using hovertemplate
+                hovertemplate="x=%{x}<br>"
+                + "y=%{y}<br>"
+                + "z=%{customdata}<extra></extra>",
+            ),
+        )
+    frames = [
+        go.Frame(data=[heatmap], name=f"frame{i}") for i, heatmap in enumerate(heatmaps)
+    ]
+    fig = go.Figure(data=[heatmaps[0]], frames=frames)
+
+    fig.update_layout(
+        title=f"Model multiplication table",
+        xaxis={
+            "showgrid": True,
+            "side": "top",
+            "ticks": "outside",
+            "tickmode": "array",
+            "tickvals": [i for i in range(model.N)],
+            "ticktext": row_labels,
+        },
+        yaxis={
+            "showgrid": True,
+            # "autorange": "reversed",
+            "side": "left",
+            "ticks": "outside",
+            "tickmode": "array",
+            "tickvals": [i for i in range(model.N)],
+            "ticktext": col_labels,
+        },
+        height=600,
+        width=600,
+    )
+    sliders = [
+        dict(
+            steps=[
+                dict(
+                    method="animate",
+                    args=[
+                        [f"frame{k}"],
+                        dict(
+                            mode="immediate",
+                            frame=dict(duration=300, redraw=True),
+                            transition=dict(duration=300),
+                        ),
+                    ],
+                    label=f"{k+1}",
+                )
+                for k in range(len(frames))
+            ],
+            transition=dict(duration=300),
+            x=0,
+            y=0,
+            currentvalue=dict(
+                font=dict(size=12), prefix="Frame: ", visible=True, xanchor="center"
+            ),
+            len=1.0,
+        )
+    ]
+    menu = dict(
+        type="buttons",
+        showactive=False,
+        buttons=[
+            dict(
+                label="Play",
+                method="animate",
+                args=[
+                    None,
+                    {
+                        "frame": {"duration": 500, "redraw": True},
+                        "fromcurrent": True,
+                        "transition": {"duration": 300, "easing": "quadratic-in-out"},
+                    },
+                ],
+            ),
+            dict(
+                label="Pause",
+                method="animate",
+                args=[
+                    [None],
+                    {
+                        "frame": {"duration": 0, "redraw": False},
+                        "mode": "immediate",
+                        "transition": {"duration": 0},
+                    },
+                ],
+            ),
+        ],
+    )
+
+    fig.update_layout(sliders=sliders, updatemenus=[menu])
+
+    if save == True:
+        if not os.path.exists("plots"):
+            os.mkdir("plots")
+
+        fig.write_html("./plots/model_table.html")
+    return fig
+
+
+def indicator_table(model, params, instance):
     """Takes a multiplication table z and returns a matrix with entry A[i][j]:
     • 1 if z[i][j]=m_1(i,j)
     • 2 if z[i][j]=m_2(i,j)
     • 3 if z[i][j]=m_1(i,j)=m_2(i,j)
     • 0 else
     """
-    z = model_table(model, params)
+    z = model_table(model, instance=instance)
 
     groups = string_to_groups(params.group_string)
     cardinality = len(groups[0])
@@ -151,10 +264,11 @@ def plot_indicator_table(model, params, save=False):
     )
 
     if save == True:
-        if not os.path.exists("src/plots"):
-            os.mkdir("src/plots")
+        # let's assume the working directory is src? not sure tho.
+        if not os.path.exists("plots"):
+            os.mkdir("plots")
 
-        fig.write_html("./src/plots/plot_final.html")
+        fig.write_html("./plots/plot_final.html")
     return fig
 
 
