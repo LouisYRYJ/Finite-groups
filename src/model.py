@@ -7,6 +7,7 @@ import einops
 import numpy as np
 from beartype import beartype
 from copy import deepcopy
+from abc import ABC, abstractmethod
 
 
 class MLP(nn.Module):
@@ -66,9 +67,58 @@ def custom_kaiming(dims):
     # Assumes shape [..., fan_in, fan_out]
     return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2])))
 
+    
+class InstancedModule(ABC, nn.Module):
+    '''
+    Module with instance dimension to allow for parallel runs
+    '''
+    def __init__(self):
+        super().__init__()
+        
+    @abstractmethod
+    def forward(
+        self, a: Int[t.Tensor, "batch_size entries"]
+    ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
+        pass
 
-class MLP3(nn.Module):
-    # TODO: It's probably better practice to explicitly list the args (instances, embed_dim, etc)
+    def __getitem__(self, slice):
+        """
+        Returns a new model with parameters sliced along the instances dimension.
+        """
+        ret = deepcopy(self)
+        for name, param in self.named_parameters():
+            sliced_param = param[slice]
+            if isinstance(slice, int):
+                sliced_param = sliced_param.unsqueeze(0)
+            setattr(ret, name, nn.Parameter(sliced_param.clone()))
+        return ret
+
+    def repeat(self, n):
+        """
+        Returns a new model repeated along instances dimension.
+        """
+        ret = deepcopy(self)
+        for name, param in self.named_parameters():
+            rep_param = einops.repeat(param, 'instance ... -> (n instance) ...', n=n)
+            setattr(ret, name, nn.Parameter(rep_param.clone()))
+        return ret
+
+    def num_instances(self):
+        # this is not great. maybe explicitly store num_instances as int?
+        for k, v in self.named_parameters():
+            return v.shape[0]
+
+    @staticmethod
+    def stack(models):
+        ret = deepcopy(models[0])
+        for name, param in models[0].named_parameters():
+            all_params = [model.get_parameter(name) for model in models]
+            stacked_param = einops.rearrange(all_params, 'model instance ... -> (model instance) ...')
+            setattr(ret, name, nn.Parameter(stacked_param.clone()))
+        return ret
+
+class MLP3(InstancedModule):
+    # TODO: It's maybe better practice to explicitly list the args (instances, embed_dim, etc)
     # instead of using the params object
     def __init__(self, N, params):
         super().__init__()
@@ -104,25 +154,13 @@ class MLP3(nn.Module):
         else:
             raise ValueError("Activation not recognized")
 
-    def __getitem__(self, slice):
-        """
-        Returns a new model with parameters sliced along the instances dimension.
-        """
-        ret = deepcopy(self)
-        for name, param in self.named_parameters():
-            sliced_param = param[slice].clone()
-            if isinstance(slice, int):
-                sliced_param = sliced_param.unsqueeze(0)
-            setattr(ret, name, nn.Parameter(sliced_param))
-        return ret
-
     @jaxtyped(typechecker=beartype)
     def forward(
         self, a: Int[t.Tensor, "batch_size entries"]
     ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
         a_instances = einops.repeat(
-            a, " batch_size entries -> batch_size n entries", n=self.params.instances
+            a, " batch_size entries -> batch_size n entries", n=self.num_instances(),
         )  # batch_size instances entries
 
         a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
@@ -155,13 +193,10 @@ class MLP3(nn.Module):
         return out
 
 
-class MLP4(nn.Module):
+class MLP4(InstancedModule):
     """
     Architecture studied in Morwani et al. "Feature emergence via margin maximization"
     """
-
-    # TODO: It's probably better practice to explicitly list the args (instances, embed_dim, etc)
-    # instead of using the params object
     def __init__(self, N, params):
         super().__init__()
         self.params = params
@@ -192,25 +227,13 @@ class MLP4(nn.Module):
         else:
             raise ValueError("Activation not recognized")
 
-    def __getitem__(self, slice):
-        """
-        Returns a new model with parameters sliced along the instances dimension.
-        """
-        ret = deepcopy(self)
-        for name, param in self.named_parameters():
-            sliced_param = param[slice].clone()
-            if isinstance(slice, int):
-                sliced_param = sliced_param.unsqueeze(0)
-            setattr(ret, name, nn.Parameter(sliced_param))
-        return ret
-
     @jaxtyped(typechecker=beartype)
     def forward(
         self, a: Int[t.Tensor, "batch_size entries"]
     ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
         a_instances = einops.repeat(
-            a, " batch_size entries -> batch_size n entries", n=self.params.instances
+            a, " batch_size entries -> batch_size n entries", n=self.num_params(),
         )  # batch_size instances entries
 
         a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
