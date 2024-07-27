@@ -108,6 +108,9 @@ class InstancedModule(ABC, nn.Module):
         for k, v in self.named_parameters():
             return v.shape[0]
 
+    def __len__(self):
+        return self.num_instances()
+
     @staticmethod
     def stack(models):
         ret = deepcopy(models[0])
@@ -116,6 +119,31 @@ class InstancedModule(ABC, nn.Module):
             stacked_param = einops.rearrange(all_params, 'model instance ... -> (model instance) ...')
             setattr(ret, name, nn.Parameter(stacked_param.clone()))
         return ret
+
+    @abstractmethod
+    def _forward(
+        self, a: Int[t.Tensor, "batch entry"]
+    ) -> Float[t.Tensor, "batch instance vocab"]:
+        pass
+
+    @jaxtyped(typechecker=beartype)
+    def forward(
+        self, 
+        a: Int[t.Tensor, "batch entry"], 
+        ibatch_size: int=-1,
+    ) -> Float[t.Tensor, "batch instance vocab"]:
+        '''
+        Forward pass batched along instances.
+        '''
+        if ibatch_size < 0:
+            return self._forward(a)
+        
+        batched_models = [
+            self[i: i + ibatch_size] for i in range(0, self.num_instances(), ibatch_size)
+        ]
+        out = [model._forward(a) for model in batched_models]
+        # can't use einops rearrange here bc variable number of instances per ibatch
+        return t.concat(out, dim=1)
 
 class MLP3(InstancedModule):
     # TODO: It's maybe better practice to explicitly list the args (instances, embed_dim, etc)
@@ -155,7 +183,7 @@ class MLP3(InstancedModule):
             raise ValueError("Activation not recognized")
 
     @jaxtyped(typechecker=beartype)
-    def forward(
+    def _forward(
         self, a: Int[t.Tensor, "batch_size entries"]
     ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
@@ -228,7 +256,7 @@ class MLP4(InstancedModule):
             raise ValueError("Activation not recognized")
 
     @jaxtyped(typechecker=beartype)
-    def forward(
+    def _forward(
         self, a: Int[t.Tensor, "batch_size entries"]
     ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
