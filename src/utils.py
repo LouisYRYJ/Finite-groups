@@ -13,8 +13,35 @@ from typing import Tuple, Union, Any
 from itertools import product
 import glob
 import numpy as np
+from model import InstancedModule
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
+
+@t.no_grad()
+def ema(x, alpha, dim=-1):
+    ret = [x.select(dim, 0)]
+    for i in range(1, x.shape[dim]):
+        ret.append(alpha * x.select(dim, i) + (1 - alpha) * ret[-1])
+    return t.stack(ret, dim=dim)
+
+def full_train_loss(
+    model: InstancedModule,
+    dataset: GroupData,
+) -> Float[t.Tensor, 'instance']:
+    loader = DataLoader(
+        dataset=dataset,
+        batch_size=len(dataset),
+        shuffle=False,
+        drop_last=False
+    )
+    model.eval()
+    loss = 0
+    for x, z in loader:
+        x = x.to(device)
+        z = z.to(device)
+        output = model(x)
+        loss += get_cross_entropy(output, z)
+    return loss / len(loader)
 
 @t.no_grad()
 @jaxtyped(typechecker=beartype)
