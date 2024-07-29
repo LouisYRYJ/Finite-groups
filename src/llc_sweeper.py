@@ -9,7 +9,6 @@ import json
 from torch.utils.data import DataLoader
 from utils import random_indices
 import matplotlib.pyplot as plt
-from groups_data import GroupData
 
 DEVICE = "cpu"
 
