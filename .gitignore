@@ -8,3 +8,4 @@ __pycache__/
 wandb/
 poetry.lock
 .ipynb_checkpoints/
+jupyter.log
