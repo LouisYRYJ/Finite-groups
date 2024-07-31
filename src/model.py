@@ -254,7 +254,7 @@ class MLP4(InstancedModule):
     ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
 
         a_instances = einops.repeat(
-            a, " batch_size entries -> batch_size n entries", n=self.num_params(),
+            a, " batch_size entries -> batch_size n entries", n=self.num_instances(),
         )  # batch_size instances entries
 
         a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
