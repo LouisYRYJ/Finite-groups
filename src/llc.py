@@ -8,7 +8,7 @@ from model import InstancedModule
 from utils import *
 from group_data import *
 from jaxtyping import Float
-from typing import Union
+from typing import Union, Callable
 from einops import repeat
 from torch.utils.data import DataLoader, RandomSampler
 from tqdm.notebook import tqdm
@@ -27,6 +27,7 @@ def sgld_trace(
     epochs: int=2000,
     instances: int=1,
     floor: Union[Float[t.Tensor, 'instance'], float]=0.,
+    pos_func: Callable=lambda x: x.abs(),
     tq: bool=True,
     batch_size=-1,
     ibatch_size: int=-1,
@@ -79,7 +80,8 @@ def sgld_trace(
             output = model(x, ibatch_size=ibatch_size)
             loss = get_cross_entropy(output, z)
             epoch_loss += loss
-            (loss - floor).abs().sum().backward()
+            # (loss - floor).abs().sum().backward()
+            pos_func(loss - floor).sum().backward()
             for name, param in model.named_parameters():
                 if param.grad is None:
                     import pdb; pdb.set_trace()
@@ -108,11 +110,13 @@ def llc_from_trace(
     beta:  Float[t.Tensor, 'instance'],
     burnin: float=0.6,
     positive: bool=False,
+    pos_func: Callable=lambda x: x.abs(),
 ) -> Float[t.Tensor, 'instance']:
     start = int(burnin * trace.shape[1])
     if positive:
         orig_loss = einops.repeat(orig_loss, 'instance -> instance n', n=trace.shape[1])
-        return beta * (trace - orig_loss).abs().mean(dim=1)
+        # return beta * (trace - orig_loss).abs().mean(dim=1)
+        return beta * pos_func(trace - orig_loss).mean(dim=1)
     else:
         return beta * (trace[:,start:].mean(dim=1) - orig_loss)
 
@@ -131,6 +135,7 @@ def get_llc(
     ibatch_size: int=-1,
     batch_size: int=-1,
     replacement: bool=False,
+    pos_func: Callable=lambda x: x.abs(),
 ) -> Float[t.Tensor, 'instance']:
     orig_loss = full_train_loss(model, dataset)
     floor = orig_loss.detach() if positive else 0.
@@ -139,7 +144,7 @@ def get_llc(
         trace = sgld_trace(
             model, dataset, eps, beta, gamma, floor=floor,
             epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-            batch_size=batch_size,
+            batch_size=batch_size, pos_func=pos_func,
         )
         trace = einops.rearrange(trace, '(chain instance) ... -> chain instance ...', chain=chains)
         trace = trace.mean(dim=0)
@@ -150,12 +155,12 @@ def get_llc(
                 sgld_trace(
                     model, dataset, eps, beta, gamma, floor=floor,
                     epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-                    batch_size=batch_size,
+                    batch_size=batch_size, pos_func=pos_func,
                 )
             )
         # mean over chains
         trace = sum(traces) / len(traces)
-    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive), trace
+    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive, pos_func=pos_func), trace
 
 def plot_trace(trace: Float[t.Tensor, 'instance epoch']) -> go.Figure:
     fig = go.Figure()

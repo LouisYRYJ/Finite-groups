@@ -64,6 +64,9 @@ def load_model_paths(path):
         for filename in sorted(files, key=get_number_from_filename)[1:]:
             model_paths.append(os.path.join(root, filename))
 
+    if len(model_paths) == 0:
+        model_paths.append(os.path.join(root, 'final.pt'))
+
     return model_paths, params
 
 def load_models(path):
