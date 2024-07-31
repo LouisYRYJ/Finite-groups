@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 import re
 from dataclasses import dataclass
 from model import MODEL_DICT
+from tqdm import tqdm
 
 
 @dataclass
@@ -69,7 +70,7 @@ def load_models(path):
     model_paths, params = load_model_paths(path)
     models = []
     N = len(string_to_groups(params.group_string)[0])
-    for model_path in model_paths:
+    for model_path in tqdm(model_paths):
         model = MODEL_DICT[params.model](N=N, params=params)
         model.load_state_dict(t.load(model_path))
         models.append(model)

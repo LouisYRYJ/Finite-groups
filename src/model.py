@@ -75,12 +75,6 @@ class InstancedModule(ABC, nn.Module):
     def __init__(self):
         super().__init__()
         
-    @abstractmethod
-    def forward(
-        self, a: Int[t.Tensor, "batch_size entries"]
-    ) -> Float[t.Tensor, "batch_size instances d_vocab"]:
-        pass
-
     def __getitem__(self, slice):
         """
         Returns a new model with parameters sliced along the instances dimension.
@@ -190,7 +184,6 @@ class MLP3(InstancedModule):
         a_instances = einops.repeat(
             a, " batch_size entries -> batch_size n entries", n=self.num_instances(),
         )  # batch_size instances entries
-
         a_1, a_2 = a_instances[..., 0], a_instances[..., 1]
 
         a_1_onehot = F.one_hot(a_1, num_classes=self.N).float()

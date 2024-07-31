@@ -10,6 +10,9 @@ from torch.utils.data import DataLoader
 from utils import random_indices
 import matplotlib.pyplot as plt
 
+# NOTE: this is an old version using the devinterp repo
+# (thus no instancewise support)
+
 DEVICE = "cpu"
 
 directory = "models/model_2024-03-22 15:31:53"

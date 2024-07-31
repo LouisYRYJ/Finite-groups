@@ -10,12 +10,13 @@ from group_data import *
 from jaxtyping import Float
 from typing import Union
 from einops import repeat
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from tqdm.notebook import tqdm
 import plotly.graph_objects as go
 import copy
 import math
 from itertools import product
+import plotly.subplots as sb
 
 def sgld_trace(
     model: InstancedModule,
@@ -25,7 +26,11 @@ def sgld_trace(
     gamma: Union[Float[t.Tensor, 'instance'], Float[t.Tensor, '1'], float],
     epochs: int=2000,
     instances: int=1,
+    floor: Union[Float[t.Tensor, 'instance'], float]=0.,
     tq: bool=True,
+    batch_size=-1,
+    ibatch_size: int=-1,
+    replacement: bool=False,
 ) -> Float[t.Tensor, 'instance epoch']:
     hyparams = {
         'eps': eps, 'beta': beta, 'gamma': gamma
@@ -44,12 +49,17 @@ def sgld_trace(
         if v.shape[0] != instances:
             assert v.shape[0] == 1, f'Expected either {1} or {instances} {k} instances, but got {v.shape[0]}!'
             hyparams[k] = einops.repeat(v, '1 -> (n 1)', n=instances)
+
+    if batch_size < 0:
+        batch_size = len(dataset)
     
+    sampler = RandomSampler(dataset, replacement=replacement)
     loader = DataLoader(
         dataset=dataset,
-        batch_size=len(dataset),
+        batch_size=batch_size,
+        sampler=sampler,
         shuffle=False,
-        drop_last=False
+        drop_last=True,
     )
 
     eps, beta, gamma = hyparams['eps'], hyparams['beta'], hyparams['gamma']
@@ -66,11 +76,13 @@ def sgld_trace(
         for x, z in loader:
             x = x.to(device)
             z = z.to(device)
-            output = model(x)
+            output = model(x, ibatch_size=ibatch_size)
             loss = get_cross_entropy(output, z)
             epoch_loss += loss
-            loss.sum().backward()
+            (loss - floor).abs().sum().backward()
             for name, param in model.named_parameters():
+                if param.grad is None:
+                    import pdb; pdb.set_trace()
                 grad_step = einops.einsum(
                     -(eps / 2) * beta,
                     param.grad.data,
@@ -95,9 +107,14 @@ def llc_from_trace(
     orig_loss: Float[t.Tensor, 'instance'],
     beta:  Float[t.Tensor, 'instance'],
     burnin: float=0.6,
+    positive: bool=False,
 ) -> Float[t.Tensor, 'instance']:
     start = int(burnin * trace.shape[1])
-    return beta * (trace[:,start:].mean(dim=1) - orig_loss)
+    if positive:
+        orig_loss = einops.repeat(orig_loss, 'instance -> instance n', n=trace.shape[1])
+        return beta * (trace - orig_loss).abs().mean(dim=1)
+    else:
+        return beta * (trace[:,start:].mean(dim=1) - orig_loss)
 
 def get_llc(
     model: InstancedModule,
@@ -105,13 +122,40 @@ def get_llc(
     eps: Union[Float[t.Tensor, 'instance'], Float[t.Tensor, '1'], float],
     beta: Union[Float[t.Tensor, 'instance'], Float[t.Tensor, '1'], float],
     gamma: Union[Float[t.Tensor, 'instance'], Float[t.Tensor, '1'], float],
+    chains: int=5,
     burnin: float=0.6,
     epochs: int=2000,
+    positive: bool=False,
+    parallel_chain: bool=False,
     tq: bool=True,
+    ibatch_size: int=-1,
+    batch_size: int=-1,
+    replacement: bool=False,
 ) -> Float[t.Tensor, 'instance']:
-    trace = sgld_trace(model, dataset, eps, beta, gamma, epochs=epochs, tq=tq)
     orig_loss = full_train_loss(model, dataset)
-    return llc_from_trace(trace, orig_loss, beta, burnin=burnin), trace
+    floor = orig_loss.detach() if positive else 0.
+    if parallel_chain:
+        model = model.stack([model for _ in range(chains)])
+        trace = sgld_trace(
+            model, dataset, eps, beta, gamma, floor=floor,
+            epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
+            batch_size=batch_size,
+        )
+        trace = einops.rearrange(trace, '(chain instance) ... -> chain instance ...', chain=chains)
+        trace = trace.mean(dim=0)
+    else:
+        traces = []
+        for _ in range(chains):
+            traces.append(
+                sgld_trace(
+                    model, dataset, eps, beta, gamma, floor=floor,
+                    epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
+                    batch_size=batch_size,
+                )
+            )
+        # mean over chains
+        trace = sum(traces) / len(traces)
+    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive), trace
 
 def plot_trace(trace: Float[t.Tensor, 'instance epoch']) -> go.Figure:
     fig = go.Figure()
@@ -130,6 +174,9 @@ def sweep_llc(
     burnin: float=0.6,
     epochs: int=2000,
     chains: int=5,
+    replacement: bool=False,
+    positive: bool=False,
+    batch_size: int=-1,
 ) -> Float[t.Tensor, 'eps beta gamma']:
     hyparams = list(product(eps_l, beta_l, gamma_l)) * chains
     eps, beta, gamma = zip(*hyparams)
@@ -144,6 +191,10 @@ def sweep_llc(
         gamma,
         burnin=burnin,
         epochs=epochs,
+        replacement=replacement,
+        positive=positive,
+        chains=1,   # model is already *chains, so just 1 chain here.
+        batch_size=batch_size,
     )
     llc = einops.rearrange(
         llc, 
@@ -189,23 +240,40 @@ def plot_trace_sweep(
     eps_l: list[float],
     beta_l: list[float],
     gamma_l: list[float],
+    skip_bad: bool=False,
 ) -> go.Figure:
     n_eps, n_beta, n_gamma, _, _ = trace.shape
     fig = go.Figure()
+    ncols = len(eps_l)
+    nrows = len(beta_l) * len(gamma_l)
+    fig = sb.make_subplots(rows=nrows, cols=ncols)
+
     for (i, eps), (j, beta), (k, gamma) in product(enumerate(eps_l), enumerate(beta_l), enumerate(gamma_l)):
-        y = trace[i, j, k, 0, :]  # only plot first chain
-        if y.isnan().any() or y.median() < 0.001 or y.max() > 100:
-            continue
-        fig.add_trace(go.Scatter(
-            y=y.cpu().numpy(),
-            mode='lines',
-            name=f'e{eps:.0e}b{beta:.0e}g{gamma:.0e}'
-        ))
+        for c in range(trace.shape[3]): # iterate over chains
+            y = trace[i, j, k, c, :] 
+            if skip_bad and (y.isnan().any() or y.median() < 0.001 or y.max() > 100):
+                continue
+            row = k*len(beta_l)+j+1
+            col = i+1
+            fig.add_trace(
+                go.Scatter(
+                    y=y.cpu().numpy(),
+                    mode='lines',
+                    name='loss',
+                    legendgroup='loss',
+                    showlegend= (row==1 and col==1),
+                    # name=f'e{eps:.0e}b{beta:.0e}g{gamma:.0e}'
+                ),
+                row=row, col=col,
+            )
+        fig.update_xaxes(title_text=f'e{eps:.0e} b{beta:.0e} g{gamma:.0e}', row=row, col=col)
 
     fig.update_layout(
         title='LLC sweep trajectories',
-        xaxis_title='epochs',
-        yaxis_title='loss',
-        legend_title='eps,beta,gamma'
+        height=300*nrows, 
+        width=300*ncols,
+        # xaxis_title='epochs',
+        # yaxis_title='loss',
+        # legend_title='eps,beta,gamma'
     )
     return fig

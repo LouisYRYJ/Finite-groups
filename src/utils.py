@@ -57,7 +57,7 @@ def get_accuracy(
 
 @jaxtyped(typechecker=beartype)
 def get_cross_entropy(
-    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
+    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"],
 ) -> Float[t.Tensor, "instance"]:
     """
     Compute instance-wise cross entropy loss of model.
