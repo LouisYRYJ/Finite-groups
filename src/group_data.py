@@ -1,3 +1,4 @@
+from __future__ import annotations
 from torch.utils.data import Dataset
 import torch as t
 import random
@@ -11,6 +12,9 @@ import warnings
 from collections import Counter
 import matplotlib.pyplot as plt
 import math
+from sympy.combinatorics import PermutationGroup, Permutation
+from sympy.combinatorics.named_groups import AlternatingGroup
+from tqdm import tqdm
 
 
 # TODO: Find a better place to put this.
@@ -78,6 +82,50 @@ class Group:
             n += 1
         return n
 
+    @staticmethod
+    def from_sympy(
+        pgroup: PermutationGroup
+    ) -> Group:
+        elements = pgroup.elements
+        N = len(elements)
+        table = t.zeros((N, N), dtype=t.int64)
+        for (i, a), (j, b) in product(enumerate(elements), repeat=2):
+            table[i, j] = elements.index(a * b)
+        return Group(elements, table)
+
+@jaxtyped(typechecker=beartype)
+def is_group(group: Group, tq: bool=True) -> bool:
+    N = len(group)
+    table = group.cayley_table
+ 
+    # find identity
+    e = None
+    for i in range(N):
+        if all(table[i, j]==j and table[j, i]==j for j in range(N)):
+            e = i
+            print('Identity found:', e)
+            break
+    if e is None:
+        print('No identity found')
+        return False
+    
+    # check inverses
+    for i in range(N):
+        if all(table[i, j]!=e or table[j, i]!=e for j in range(N)):
+            print('No inverse:', i)
+            return False
+
+    # check associativity
+    itr = product(range(N), repeat=3)
+    if tq:
+        itr = tqdm(itr, desc='associativity', total=N**3)
+    for i, j, k in itr:
+        if table[i, table[j, k]] != table[table[i, j], k]:
+            print(f'Associativity failed on {i}, {j}, {k}')
+            return False
+    return True
+    
+
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
@@ -105,6 +153,28 @@ def randm(N: int) -> Group:
     cayley_table = t.randint(0, N, (N, N), dtype=t.int64)
     return Group(elements, cayley_table)
 
+def permute(
+    group: Group,
+    pi: Callable,
+    pi_inv: Callable,
+) -> Group:
+    table = t.zeros_like(group.cayley_table)
+    for (i, x), (j, y) in product(enumerate(group.elements), repeat=2):
+        table[i, j] = group.elem_to_idx(pi_inv(group.mult(pi(x), pi(y))))
+    return Group(group.elements, table)
+
+def swapZ(N: int) -> Group:
+    def pi(x):
+        nonlocal N
+        a = 1
+        b = N-1 # N-2
+        if x == a:
+            return b
+        elif x == b:
+            return a
+        else:
+            return x
+    return permute(Z(N), pi, pi)
 
 @jaxtyped(typechecker=beartype)
 def semidirect_product(
@@ -146,9 +216,17 @@ def Z(*args: int) -> Group:
 
 
 @jaxtyped(typechecker=beartype)
-def twisted(group: Group, automorphism: Callable[..., Any]) -> Group:
-    phi = lambda x: automorphism if x else lambda y: y
-    return semidirect_product(group, cyclic(2), phi)
+# TODO: this is a stupid name
+def twisted(group: Group, automorphism: Callable[..., Any], m: int=2) -> Group:
+    def phi(x):
+        def aut(y):
+            ret = y
+            for _ in range(x):
+                ret = automorphism(ret)
+            return ret
+        return aut
+        
+    return semidirect_product(group, cyclic(m), phi)
 
 
 @jaxtyped(typechecker=beartype)
@@ -158,28 +236,20 @@ def D(N: int) -> Group:
 
 
 @jaxtyped(typechecker=beartype)
+# TODO: this is a stupid name
 def holoconj(group: Group, a: Any) -> Group:
     """
     Given group G, returns semidirect G x Z(m) where Z(m) acts on G by conjugation by elem
     and m is the order of elem.
     """
     m = group.order(a)
-
-    def phi(x):
-        def aut(y):
-            ret = y
-            for _ in range(x):
-                ret = group.mult(group.mult(a, ret), group.inv(a))
-            return ret
-
-        return aut
-
-    return semidirect_product(group, cyclic(m), phi)
+    phi = lambda x, a=a: group.mult(group.mult(a, x), group.inv(a))
+    return twisted(group, phi, m=m)
 
 
 @jaxtyped(typechecker=beartype)
 def twZ(N: int) -> Group:
-    return twisted(cyclic(N), lambda x: ((N // 2 + 1) * x) % N)
+    return twisted(cyclic(N), lambda x, N=N: ((N // 2 + 1) * x) % N)
 
 
 @jaxtyped(typechecker=beartype)
@@ -255,6 +325,17 @@ def abFam(a: int, b:int, r=None) -> Optional[list[Group]]:
     phi_s = lambda x, s=s: lambda y, s=s: (y * s ** x) % (a * b)
     return [semidirect_product(base_group, Z(m), phi=phi) for phi in [phi_r, phi_s]]
 
+def A(n: int) -> Group:
+    return Group.from_sympy(AlternatingGroup(n))
+
+def S(n: int) -> Group:
+    # Construct this as semidirect prod of A(n) and Z/2
+    # To have consistent labeling with A(n) x Z/2
+    return twisted(
+        A(n),
+        lambda p: Permutation(0, 1) * p * Permutation(0, 1),
+        m=2,
+    )
 
 @jaxtyped(typechecker=beartype)
 def string_to_groups(strings: Union[str, tuple[str, ...], list[str]]) -> list[Group]:
