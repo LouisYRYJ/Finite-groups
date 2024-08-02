@@ -243,6 +243,18 @@ def autocast(x: Any) -> Any:
     except:
         return x
 
+def model_table(model, instance=0):
+    """Returns the model's current multiplication table"""
+
+    input = t.tensor(list(product(range(model.N), repeat=2)), dtype=int)
+
+    with t.no_grad():
+        model.eval()
+        logits = model(input)  # shape N^2 x instance x N
+        max_prob_entry = t.argmax(logits, dim=-1)[:, instance]  # shape N^2
+        z = rearrange(max_prob_entry, " (n m) -> n m", n=model.N)  # shape N x N
+    return z
+
 # Use this to quickly create a params object for testing.
 # Please don't use for anything else; very hacky.
 class dotdict(dict):

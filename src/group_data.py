@@ -1,6 +1,7 @@
 from __future__ import annotations
 from torch.utils.data import Dataset
 import torch as t
+from torch import nn
 import random
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
@@ -15,6 +16,7 @@ import math
 from sympy.combinatorics import PermutationGroup, Permutation
 from sympy.combinatorics.named_groups import AlternatingGroup
 from tqdm import tqdm
+from methodtools import lru_cache
 
 
 # TODO: Find a better place to put this.
@@ -37,18 +39,24 @@ class Group:
     def __init__(self, elements, cayley_table, name="group"):
         self.elements = elements
         self.cayley_table = cayley_table
-        self.identity = None
         self.name = name
-        for a in self.elements:
-            if all(self.mult(a, b) == b == self.mult(b, a) for b in self.elements):
-                self.identity = a
-                break
 
     def elem_to_idx(self, elem):
         return self.elements.index(elem)
 
     def idx_to_elem(self, idx):
         return self.elements[idx]
+
+    @lru_cache(maxsize=None)
+    def identity(self):
+        for a in self.elements:
+            if all(self.mult(a, b) == b == self.mult(b, a) for b in self.elements):
+                return a
+        return None
+
+    @lru_cache(maxsize=None)
+    def is_unital(self):
+        return self.identity() is not None
 
     def __len__(self):
         return len(self.elements)
@@ -68,12 +76,18 @@ class Group:
     def __repr__(self):
         return f"{self.name}({self.elements}, {self.cayley_table})"
 
-    # TODO: more efficient if inv, order, etc are cached.
+    @lru_cache(maxsize=None)
     def inv(self, a):
         for b in self.elements:
-            if self.mult(a, b) == self.identity:
+            if self.mult(a, b) == self.identity() == self.mult(b, a):
                 return b
+        return None
 
+    @lru_cache(maxsize=None)
+    def has_inverses(self):
+        return all(self.inv(a) is not None for a in self.elements)
+
+    @lru_cache(maxsize=None)
     def order(self, a):
         x = a
         n = 1
@@ -93,39 +107,97 @@ class Group:
             table[i, j] = elements.index(a * b)
         return Group(elements, table)
 
-@jaxtyped(typechecker=beartype)
-def is_group(group: Group, tq: bool=True) -> bool:
-    N = len(group)
-    table = group.cayley_table
- 
-    # find identity
-    e = None
-    for i in range(N):
-        if all(table[i, j]==j and table[j, i]==j for j in range(N)):
-            e = i
-            print('Identity found:', e)
-            break
-    if e is None:
-        print('No identity found')
-        return False
-    
-    # check inverses
-    for i in range(N):
-        if all(table[i, j]!=e or table[j, i]!=e for j in range(N)):
-            print('No inverse:', i)
-            return False
+    @staticmethod
+    def from_model(
+        model: nn.Module,
+        instance: None,
+        elements: None,
+    ) -> Group:
+        table = model_table(model)
+        N = table.shape[0]
+        elements = list(range(N)) if not elements else elements
+        return Group(elements, table)
 
-    # check associativity
-    itr = product(range(N), repeat=3)
-    if tq:
-        itr = tqdm(itr, desc='associativity', total=N**3)
-    for i, j, k in itr:
-        if table[i, table[j, k]] != table[table[i, j], k]:
-            print(f'Associativity failed on {i}, {j}, {k}')
-            return False
-    return True
-    
+    @lru_cache(maxsize=None)
+    def is_abelian(self) -> bool:
+        return (self.cayley_table == self.cayley_table.T).all()
 
+    @lru_cache(maxsize=None)
+    def is_associative(self, verbose: bool=False) -> bool:
+        # faster to operate directly on table instead of using mult
+        itr = product(range(len(self)), repeat=3)
+        if verbose:
+            itr = tqdm(itr, desc='associativity', total=len(self)**3)
+        table = self.cayley_table
+        for i, j, k in itr:
+            if table[i, table[j, k]] != table[table[i, j], k]:
+                if verbose:
+                    print(f'Associativity failed on {i}, {j}, {k}')
+                return False
+        return True
+
+    @lru_cache(maxsize=None)
+    def is_group(self, verbose: bool=False) -> bool:
+        return self.is_unital() and self.has_inverses() and self.is_associative(verbose=verbose)
+
+    @lru_cache(maxsize=None)
+    def get_classes(self):
+        '''Returns list of conjugacy classes'''
+        elems_remain = set(self.elements)
+        # make sure identity goes first
+        ret = [{self.identity()}]
+        elems_remain.remove(self.identity())
+        while elems_remain:
+            a = elems_remain.pop()
+            conj_class = {a}
+            for b in self.elements:
+                c = self.mult(self.inv(b), self.mult(a, b))
+                elems_remain.discard(c)
+                conj_class.add(c)
+            ret.append(conj_class)
+        return ret
+
+    @lru_cache(maxsize=None)
+    def get_class_of(self, a):
+        '''Returns a\'s conjugacy class'''
+        return [cl for cl in self.get_classes() if a in cl][0]
+
+    @lru_cache(maxsize=None)
+    def get_char_table(self, uniq_thresh=1e-2, zero_thresh=1e-6):
+        '''
+        Returns the (num_classes x num_classes) character table over \C using Burnside-Dixon.
+        See Eick et al. "Handbook of Computational Group Theory" p. 257
+        '''
+        classes = self.get_classes()
+        r = len(classes)
+        M = t.zeros((r, r, r))
+        for j, k, l in product(range(r), repeat=3):
+            l_elem = list(classes[l])[0]
+            M[j, k, l] = sum(1 for x, y in product(classes[j], classes[k]) if self.mult(x, y) == l_elem)
+        # Need shared row eigenvectors of M[0], ..., M[r]
+        # Do this by getting eig of \sum_i a_i M[i] for random a_i
+        # Will recover uniquely as long as eigenvalues are unique.
+        chars = None
+        while chars is None:
+            a = t.randn(r)
+            aM = einops.einsum(a, M, 'j, j k l -> k l')
+            L, V = t.linalg.eig(aM.T)
+            # check that all eigvalues in L are unique
+            L = L.unsqueeze(1)
+            if (L - L.T + t.eye(r)).abs().min() > uniq_thresh:
+                chars = V.T
+            else:
+                print('failed', (L - L.T + t.eye(r)).abs().min())
+                
+        class_sizes = t.Tensor([len(c) for c in classes]).unsqueeze(0)
+        char_norms = (chars * chars.conj() * class_sizes / len(self)).sum(1).unsqueeze(1).sqrt()
+        chars /= char_norms
+        # Rescale by sgn so that first column is all reals
+        # Assumes that identity is first in self.get_classes()
+        chars /= (chars[:,0].sgn().unsqueeze(1))
+        # Snap small real/complex parts to zero
+        snap = lambda x: x * (x.abs() > zero_thresh)
+        return t.complex(snap(chars.real), snap(chars.imag))
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
