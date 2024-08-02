@@ -163,7 +163,7 @@ class Group:
         return [cl for cl in self.get_classes() if a in cl][0]
 
     @lru_cache(maxsize=None)
-    def get_char_table(self, uniq_thresh=1e-2, zero_thresh=1e-6):
+    def get_char_table(self, uniq_thresh=1e-2, zero_thresh=0):
         '''
         Returns the (num_classes x num_classes) character table over \C using Burnside-Dixon.
         See Eick et al. "Handbook of Computational Group Theory" p. 257
@@ -493,8 +493,8 @@ class GroupData(Dataset):
         return len(self.train_data)
 
     def frequency_histogram(self):
-        self.distribuition = [x[2] for x in self.train_data]
-        frequency_count = Counter(self.distribuition)
+        self.distribution = [x[2] for x in self.train_data]
+        frequency_count = Counter(self.distribution)
         x = list(frequency_count.keys())
         y = list(frequency_count.values())
 

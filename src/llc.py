@@ -1,5 +1,6 @@
 import sys
 import torch as t
+from torch.utils.data import Dataset, TensorDataset
 import numpy as np
 from matplotlib import pyplot as plt
 import json
@@ -18,6 +19,8 @@ import math
 from itertools import product
 import plotly.subplots as sb
 
+# TODO: LLCParams dataclass or smth. idk.
+
 def sgld_trace(
     model: InstancedModule,
     dataset: GroupData,
@@ -32,6 +35,7 @@ def sgld_trace(
     batch_size=-1,
     ibatch_size: int=-1,
     replacement: bool=False,
+    behavioral: bool=False,
 ) -> Float[t.Tensor, 'instance epoch']:
     hyparams = {
         'eps': eps, 'beta': beta, 'gamma': gamma
@@ -42,7 +46,6 @@ def sgld_trace(
             hyparams[k] = t.tensor([v], device=device)
             
     instances = max(model.num_instances(), *(v.shape[0] for v in hyparams.values()), instances)
-    model = copy.deepcopy(model)   # don't mutate original model
     if model.num_instances() != instances:
         assert model.num_instances() == 1, f'Expected either {1} or {instances} model instances, but got {model.num_instances()}!'
         model = model.repeat(instances)
@@ -50,6 +53,14 @@ def sgld_trace(
         if v.shape[0] != instances:
             assert v.shape[0] == 1, f'Expected either {1} or {instances} {k} instances, but got {v.shape[0]}!'
             hyparams[k] = einops.repeat(v, '1 -> (n 1)', n=instances)
+
+    if behavioral:
+        X = t.tensor(list(dataset.train_data))[:, :2].to(device)  # (train_size, 2)
+        # TODO: will need to batch model(X) for larger models/groups
+        Y = model(X).detach().clone()  # (train_size, instances, group_size)
+        dataset = TensorDataset(X, Y)
+
+    model = copy.deepcopy(model)   # don't mutate original model
 
     if batch_size < 0:
         batch_size = len(dataset)
@@ -78,7 +89,19 @@ def sgld_trace(
             x = x.to(device)
             z = z.to(device)
             output = model(x, ibatch_size=ibatch_size)
-            loss = get_cross_entropy(output, z)
+            if behavioral:
+                output = einops.rearrange(
+                    output, "batch instance N -> (batch instance) N"
+                )
+                z = einops.rearrange(
+                    z, "batch instance N -> (batch instance) N"
+                )
+                loss = z.softmax(dim=1) * (z.log_softmax(dim=1) - output.log_softmax(dim=1))
+                loss = einops.rearrange(
+                    loss, "(batch instance) N -> batch instance N", instance=len(model)
+                ).sum(dim=-1).mean(dim=0)
+            else:
+                loss = get_cross_entropy(output, z)
             epoch_loss += loss
             # (loss - floor).abs().sum().backward()
             pos_func(loss - floor).sum().backward()
@@ -136,15 +159,16 @@ def get_llc(
     batch_size: int=-1,
     replacement: bool=False,
     pos_func: Callable=lambda x: x.abs(),
+    behavioral: bool=False,
 ) -> Float[t.Tensor, 'instance']:
-    orig_loss = full_train_loss(model, dataset)
+    orig_loss = 0. if behavioral else full_train_loss(model, dataset)
     floor = orig_loss.detach() if positive else 0.
     if parallel_chain:
         model = model.stack([model for _ in range(chains)])
         trace = sgld_trace(
             model, dataset, eps, beta, gamma, floor=floor,
             epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-            batch_size=batch_size, pos_func=pos_func,
+            batch_size=batch_size, pos_func=pos_func, behavioral=behavioral,
         )
         trace = einops.rearrange(trace, '(chain instance) ... -> chain instance ...', chain=chains)
         trace = trace.mean(dim=0)
@@ -155,7 +179,7 @@ def get_llc(
                 sgld_trace(
                     model, dataset, eps, beta, gamma, floor=floor,
                     epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-                    batch_size=batch_size, pos_func=pos_func,
+                    batch_size=batch_size, pos_func=pos_func, behavioral=behavioral
                 )
             )
         # mean over chains
@@ -181,6 +205,7 @@ def sweep_llc(
     chains: int=5,
     replacement: bool=False,
     positive: bool=False,
+    behavioral: bool=False,
     batch_size: int=-1,
 ) -> Float[t.Tensor, 'eps beta gamma']:
     hyparams = list(product(eps_l, beta_l, gamma_l)) * chains
@@ -198,7 +223,8 @@ def sweep_llc(
         epochs=epochs,
         replacement=replacement,
         positive=positive,
-        chains=1,   # model is already *chains, so just 1 chain here.
+        chains=1,   # hyparams is already *chains, so just 1 chain here.
+        behavioral=behavioral,
         batch_size=batch_size,
     )
     llc = einops.rearrange(
