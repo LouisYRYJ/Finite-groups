@@ -120,7 +120,7 @@ class InstancedModule(ABC, nn.Module):
     ) -> Float[t.Tensor, "batch instance vocab"]:
         pass
 
-    @jaxtyped(typechecker=beartype)
+    # @jaxtyped(typechecker=beartype)
     def forward(
         self, 
         a: Int[t.Tensor, "batch entry"], 
@@ -281,6 +281,16 @@ class MLP4(InstancedModule):
             "batch_size instances embed_dim, instances embed_dim d_vocab-> batch_size instances d_vocab ",
         )
         return out
+
+
+class Normal(InstancedModule):
+    '''Just for LLC testing'''
+    def __init__(self, N, instances):
+        super().__init__()
+        self.w = nn.Parameter(t.zeros((instances, N)))
+        
+    def _forward(self, x):
+        return t.prod(self.w**2, dim=1)
 
 
 MODEL_DICT = {

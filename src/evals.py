@@ -52,7 +52,7 @@ def get_number_from_filename(filename):
     return -1
 
 
-def load_model_paths(path):
+def load_model_paths(path, final=False):
 
     model_paths = []
 
@@ -64,13 +64,13 @@ def load_model_paths(path):
         for filename in sorted(files, key=get_number_from_filename)[1:]:
             model_paths.append(os.path.join(root, filename))
 
-    if len(model_paths) == 0:
-        model_paths.append(os.path.join(root, 'final.pt'))
+    if final or len(model_paths) == 0:
+        model_paths = [os.path.join(root, 'final.pt')]
 
     return model_paths, params
 
-def load_models(path):
-    model_paths, params = load_model_paths(path)
+def load_models(path, final=False):
+    model_paths, params = load_model_paths(path, final=final)
     models = []
     N = len(string_to_groups(params.group_string)[0])
     for model_path in tqdm(model_paths):

@@ -36,7 +36,9 @@ def sgld_trace(
     ibatch_size: int=-1,
     replacement: bool=False,
     behavioral: bool=False,
-) -> Float[t.Tensor, 'instance epoch']:
+    return_traj: bool=False,
+    output_is_loss: bool=False,
+):
     hyparams = {
         'eps': eps, 'beta': beta, 'gamma': gamma
     }
@@ -57,7 +59,7 @@ def sgld_trace(
     if behavioral:
         X = t.tensor(list(dataset.train_data))[:, :2].to(device)  # (train_size, 2)
         # TODO: will need to batch model(X) for larger models/groups
-        Y = model(X).detach().clone()  # (train_size, instances, group_size)
+        Y = model(X).clone().detach()  # (train_size, instances, group_size)
         dataset = TensorDataset(X, Y)
 
     model = copy.deepcopy(model)   # don't mutate original model
@@ -83,13 +85,16 @@ def sgld_trace(
     trace = []
     itr = tqdm(range(epochs), desc='SGLD') if tq else range(epochs)
     model.train()
+    traj = []
     for epoch in itr:
         epoch_loss = 0
         for x, z in loader:
             x = x.to(device)
             z = z.to(device)
             output = model(x, ibatch_size=ibatch_size)
-            if behavioral:
+            if output_is_loss:
+                loss = output
+            elif behavioral:
                 output = einops.rearrange(
                     output, "batch instance N -> (batch instance) N"
                 )
@@ -105,6 +110,8 @@ def sgld_trace(
             epoch_loss += loss
             # (loss - floor).abs().sum().backward()
             pos_func(loss - floor).sum().backward()
+            if return_traj:
+                traj.append(copy.deepcopy(model).cpu())  # to cpu to save memory
             for name, param in model.named_parameters():
                 if param.grad is None:
                     import pdb; pdb.set_trace()
@@ -124,8 +131,13 @@ def sgld_trace(
                     'instance, instance ... -> instance ...'
                 )
                 param.data.add_(grad_step + localization + noise)
+                param.grad.data.zero_()
         trace.append(epoch_loss.detach() / len(loader))
-    return einops.rearrange(trace, 'epoch instance -> instance epoch')
+    ret = einops.rearrange(trace, 'epoch instance -> instance epoch')
+    if return_traj:
+        return ret, traj
+    else:
+        return ret
 
 def llc_from_trace(
     trace: Float[t.Tensor, 'instance epoch'],
@@ -160,15 +172,16 @@ def get_llc(
     replacement: bool=False,
     pos_func: Callable=lambda x: x.abs(),
     behavioral: bool=False,
+    output_is_loss: bool=False,
 ) -> Float[t.Tensor, 'instance']:
-    orig_loss = 0. if behavioral else full_train_loss(model, dataset)
+    orig_loss = 0. if behavioral or output_is_loss else full_train_loss(model, dataset)
     floor = orig_loss.detach() if positive else 0.
     if parallel_chain:
         model = model.stack([model for _ in range(chains)])
         trace = sgld_trace(
             model, dataset, eps, beta, gamma, floor=floor,
             epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-            batch_size=batch_size, pos_func=pos_func, behavioral=behavioral,
+            batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss
         )
         trace = einops.rearrange(trace, '(chain instance) ... -> chain instance ...', chain=chains)
         trace = trace.mean(dim=0)
@@ -179,7 +192,7 @@ def get_llc(
                 sgld_trace(
                     model, dataset, eps, beta, gamma, floor=floor,
                     epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-                    batch_size=batch_size, pos_func=pos_func, behavioral=behavioral
+                    batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss
                 )
             )
         # mean over chains
@@ -207,6 +220,7 @@ def sweep_llc(
     positive: bool=False,
     behavioral: bool=False,
     batch_size: int=-1,
+    output_is_loss: bool=False
 ) -> Float[t.Tensor, 'eps beta gamma']:
     hyparams = list(product(eps_l, beta_l, gamma_l)) * chains
     eps, beta, gamma = zip(*hyparams)
@@ -226,6 +240,7 @@ def sweep_llc(
         chains=1,   # hyparams is already *chains, so just 1 chain here.
         behavioral=behavioral,
         batch_size=batch_size,
+        output_is_loss=output_is_loss,
     )
     llc = einops.rearrange(
         llc, 
@@ -263,7 +278,7 @@ def plot_llc_sweep(
         legend_title='β,γ'
     )
     fig.update_xaxes(type="log")
-    fig.update_yaxes(type="log")
+    # fig.update_yaxes(type="log")
     return fig
 
 def plot_trace_sweep(
