@@ -18,6 +18,7 @@ import copy
 import math
 from itertools import product
 import plotly.subplots as sb
+import gc
 
 # TODO: LLCParams dataclass or smth. idk.
 
@@ -39,6 +40,8 @@ def sgld_trace(
     return_traj: bool=False,
     output_is_loss: bool=False,
 ):
+    model = copy.deepcopy(model)   # don't mutate original model
+
     hyparams = {
         'eps': eps, 'beta': beta, 'gamma': gamma
     }
@@ -62,7 +65,6 @@ def sgld_trace(
         Y = model(X).clone().detach()  # (train_size, instances, group_size)
         dataset = TensorDataset(X, Y)
 
-    model = copy.deepcopy(model)   # don't mutate original model
 
     if batch_size < 0:
         batch_size = len(dataset)
@@ -165,39 +167,35 @@ def get_llc(
     burnin: float=0.6,
     epochs: int=2000,
     positive: bool=False,
-    parallel_chain: bool=False,
     tq: bool=True,
-    ibatch_size: int=-1,
-    batch_size: int=-1,
+    ibatch_size: int=-1,    # instance batches
+    batch_size: int=-1,     # data batches
+    cbatch_size: int=-1,    # chain batches
     replacement: bool=False,
     pos_func: Callable=lambda x: x.abs(),
     behavioral: bool=False,
     output_is_loss: bool=False,
 ) -> Float[t.Tensor, 'instance']:
+    if cbatch_size < 0:
+        cbatch_size = chains
+    # TODO: add support for a remainder chain batch
+    assert chains % cbatch_size == 0, "chains must be divisible by cbatch_size"
     orig_loss = 0. if behavioral or output_is_loss else full_train_loss(model, dataset)
     floor = orig_loss.detach() if positive else 0.
-    if parallel_chain:
-        model = model.stack([model for _ in range(chains)])
-        trace = sgld_trace(
+    trace = 0.
+    num_chain_batches = chains // cbatch_size
+    model = model.stack([model for _ in range(cbatch_size)])
+    for _ in range(num_chain_batches):
+        gc.collect(); t.cuda.empty_cache()
+        cur_trace = sgld_trace(
             model, dataset, eps, beta, gamma, floor=floor,
             epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
             batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss
         )
-        trace = einops.rearrange(trace, '(chain instance) ... -> chain instance ...', chain=chains)
-        trace = trace.mean(dim=0)
-    else:
-        traces = []
-        for _ in range(chains):
-            traces.append(
-                sgld_trace(
-                    model, dataset, eps, beta, gamma, floor=floor,
-                    epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-                    batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss
-                )
-            )
-        # mean over chains
-        trace = sum(traces) / len(traces)
-    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive, pos_func=pos_func), trace
+        cur_trace = einops.rearrange(cur_trace, '(chain instance) ... -> chain instance ...', chain=cbatch_size).mean(dim=0)
+        trace += cur_trace
+    trace /= num_chain_batches
+    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive, pos_func=pos_func) #, traces
 
 def plot_trace(trace: Float[t.Tensor, 'instance epoch']) -> go.Figure:
     fig = go.Figure()
