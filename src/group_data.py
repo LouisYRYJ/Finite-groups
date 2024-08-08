@@ -322,7 +322,18 @@ class Group:
     @lru_cache(maxsize=None)
     def get_conj_subgroup_idx(self, subgroup, b):
         return set([self.get_conj_idx(a, b) for a in subgroup])
-        return [self.elem_to_idx(a) for a in self.get_conj_subgroup(subgroup, b)]
+
+    @lru_cache(maxsize=None)
+    def get_cosets_idx(self, subgroup, left=True):
+        '''Returns left/right cosets of subgroup in self'''
+        cosets = set()
+        for i in range(len(self)):
+            if left:
+                action = lambda x: self.mult_idx(i, x)
+            else:
+                action = lambda x: self.mult_idx(x, i)
+            cosets.add(frozenset(map(action, subgroup)))
+        return cosets
 
     @lru_cache(maxsize=None)
     def get_classes(self):
