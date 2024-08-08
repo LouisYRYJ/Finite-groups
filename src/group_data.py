@@ -18,8 +18,11 @@ from sympy.combinatorics import PermutationGroup, Permutation
 from sympy.combinatorics.named_groups import AlternatingGroup
 from tqdm import tqdm
 from methodtools import lru_cache
+import pathlib
+import hashlib
 import os
 
+ROOT = pathlib.Path(__file__).parent.parent.resolve()
 GAP_ROOT = "/usr/share/gap"
 if os.path.isdir(GAP_ROOT):
     os.environ["GAP_ROOT"] = GAP_ROOT
@@ -226,24 +229,35 @@ class Group:
         return self.idx_to_elem(self.fp_elem_to_idx(fp_elem))
 
     @lru_cache(maxsize=None)
-    def get_subgroups_idxs(self, max_index=-1) -> list[set]:
+    def get_subgroups_idx(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
         '''Return set of all subgroups of the group'''
-        gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self) if max_index == -1 else max_index)
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = f'{cache_dir}/{self.hash()}'
+        if os.path.exists(cache_path):
+            return t.load(cache_path)
+
+        print('Computing subgroups')
+        gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self))
+        print('Computing orders')
         gap_subgroups = [g for g in gap_subgroups if g.Order() > 1 and g.Order() < len(self)] # do trivial and full group separately for efficiency
+        print('Computing elements')
         subgroups= {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
         subgroups |= {
             frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()]) for subgroup in tqdm(gap_subgroups, desc='Computing subgroups')
         }
         # print(f"Found {len(subgroups)} subgroups up to conjugates with orders", [len(s) for s in subgroups])
 
+        print('Computing conjugates')
         for h in list(subgroups):
             subgroups |= {frozenset(self.get_conj_subgroup_idx(h, g)) for g in range(len(self))}
 
+        print('Saving to', cache_path)
+        t.save(subgroups, cache_path)
         return subgroups
 
     @lru_cache(maxsize=None)
-    def get_subgroups(self, max_index=-1) -> list[set]:
-        return {frozenset(map(self.idx_to_elem, h)) for h in self.get_subgroups_idxs(max_index=max_index)}
+    def get_subgroups(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
+        return {frozenset(map(self.idx_to_elem, h)) for h in self.get_subgroups_idx(cache_dir=cache_dir)}
 
     @staticmethod
     def from_model(
@@ -399,6 +413,11 @@ class Group:
         # Snap small real/complex parts to zero
         snap = lambda x: x * (x.abs() > zero_thresh)
         return t.complex(snap(chars.real), snap(chars.imag))
+
+    def hash(self):
+        m = hashlib.sha256()
+        m.update(str(self.cayley_table.int().tolist()).encode())
+        return m.hexdigest()
 
 
 @jaxtyped(typechecker=beartype)

@@ -2,7 +2,8 @@ wandb_
 *.DS_Store
 plots
 evals
-models
+models/
+subgroups/
 wandb/
 __pycache__/
 wandb/

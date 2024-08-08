@@ -22,10 +22,10 @@ from typing import Optional, Union
 import re
 import warnings
 import sys
+import pathlib
 
-
+ROOT = pathlib.Path(__file__).parent.parent.resolve()  # repo root
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
-
 
 @dataclass
 class Parameters:
@@ -115,7 +115,7 @@ def train(model, group_dataset, params):
 
     step = 0
     checkpoint_every = None
-    directory_path = f"models/{current_time}_{params.name}"
+    directory_path = f"{ROOT}/models/{current_time}_{params.name}"
     directory_path = re.sub(r"[^a-zA-Z0-9_/]", "_", directory_path)
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
