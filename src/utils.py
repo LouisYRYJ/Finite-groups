@@ -29,8 +29,7 @@ def ema(x, alpha, dim=-1):
     return t.stack(ret, dim=dim)
 
 def full_train_loss(
-    model: InstancedModule,
-    dataset: GroupData,
+    model, dataset,
 ) -> Float[t.Tensor, 'instance']:
     loader = DataLoader(
         dataset=dataset,
@@ -104,8 +103,7 @@ def get_margin(
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
 def test_loss(
-    model: nn.Module,
-    group_dataset: GroupData,
+    model, group_dataset
 ) -> dict[str, Float[t.Tensor, "instance"]]:
     """Create all possible pairs (x,y) and return loss and accuracy for all groups in group_dataset."""
     N = group_dataset.N
