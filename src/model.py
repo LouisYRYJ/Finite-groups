@@ -259,6 +259,22 @@ class MLP2(InstancedModule):
 
         return out
 
+    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
+        '''
+        Left and right pre-activation neuron weights
+        '''
+        neurons_left = einops.einsum(
+            self.embedding_left,
+            self.linear_left,
+            'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
+        )
+        neurons_right = einops.einsum(
+            self.embedding_right,
+            self.linear_right,
+            'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
+        )
+        return neurons_left, neurons_right
+
 class MLP3(InstancedModule):
     '''
     This architecture isn't used by any existing work. Our own invention :)
@@ -334,6 +350,22 @@ class MLP3(InstancedModule):
         )
         return out
 
+    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
+        '''
+        Left and right pre-activation neuron weights
+        '''
+        neurons_left = einops.einsum(
+            self.embedding_left,
+            self.linear,
+            'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
+        )
+        neurons_right = einops.einsum(
+            self.embedding_right,
+            self.linear,
+            'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
+        )
+        return neurons_left, neurons_right
+
 
 class MLP4(InstancedModule):
     """
@@ -402,6 +434,12 @@ class MLP4(InstancedModule):
             "batch_size instances embed_dim, instances embed_dim d_vocab-> batch_size instances d_vocab ",
         )
         return out
+
+    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab embed_dim']:
+        '''
+        Left and right pre-activation neuron weights
+        '''
+        return self.embedding_left, self.embedding_right
 
 
 class Normal(InstancedModule):
