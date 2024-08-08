@@ -128,8 +128,17 @@ class Group:
             table[i, j] = int(gap_table[i, j]) - 1   # gap_table is 1-indexed
         return Group(elements, table)
 
+    # def to_gap(self) -> GapObj:
+    #     return gap.GroupByMultiplicationTable((self.cayley_table + 1).tolist())  # gap table is 1-indexed
+
     def to_gap(self) -> GapObj:
-        return gap.GroupByMultiplicationTable((self.cayley_table + 1).tolist())  # gap table is 1-indexed
+        N = len(self.elements)
+        f = gap.FreeGroup(gap(N))
+        gens = gap.GeneratorsOfGroup(f)
+        rels = []
+        for i, j in product(range(N), repeat=2):
+            rels.append(gens[i] * gens[j] / gens[self.cayley_table[i, j]])
+        return f / rels
 
     @staticmethod
     def from_model(
