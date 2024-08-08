@@ -18,7 +18,14 @@ from sympy.combinatorics import PermutationGroup, Permutation
 from sympy.combinatorics.named_groups import AlternatingGroup
 from tqdm import tqdm
 from methodtools import lru_cache
-from model import InstancedModule
+import os
+GAP_ROOT = '/usr/share/gap'
+if os.path.isdir(GAP_ROOT):
+    os.environ['GAP_ROOT'] = GAP_ROOT
+    from gappy import gap
+    from gappy.gapobj import GapObj
+else:
+    print('WARNING: GAP is not installed!')
 
 
 # TODO: Find a better place to put this.
@@ -108,6 +115,21 @@ class Group:
         for (i, a), (j, b) in product(enumerate(elements), repeat=2):
             table[i, j] = elements.index(a * b)
         return Group(elements, table)
+
+    @staticmethod
+    def from_gap(
+        group: GapObj
+    ) -> Group:
+        elements = [str(elem) for elem in group.Elements()]
+        N = len(elements)
+        gap_table = group.MultiplicationTable()
+        table = t.zeros((N, N), dtype=t.int64)
+        for i, j in product(range(N), repeat=2):
+            table[i, j] = int(gap_table[i, j]) - 1   # gap_table is 1-indexed
+        return Group(elements, table)
+
+    def to_gap(self) -> GapObj:
+        return gap.GroupByMultiplicationTable((self.cayley_table + 1).tolist())  # gap table is 1-indexed
 
     @staticmethod
     def from_model(
