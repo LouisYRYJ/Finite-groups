@@ -45,41 +45,6 @@ def create_gif(list_of_figures, model, params, index):
     )
 
 
-def get_number_from_filename(filename):
-    match = re.search(r"(\d+)", filename)
-    if match:
-        return int(match.group(1))
-    return -1
-
-
-def load_model_paths(path, final=False):
-
-    model_paths = []
-
-    with open(path + "/params.json", "r") as f:
-        json_str = f.read()
-        params = Parameters(**json.loads(json_str))
-
-    for root, dirs, files in os.walk(path + "/ckpts"):
-        for filename in sorted(files, key=get_number_from_filename)[1:]:
-            model_paths.append(os.path.join(root, filename))
-
-    if final or len(model_paths) == 0:
-        model_paths = [os.path.join(root, 'final.pt')]
-
-    return model_paths, params
-
-def load_models(path, final=False):
-    model_paths, params = load_model_paths(path, final=final)
-    models = []
-    N = len(string_to_groups(params.group_string)[0])
-    for model_path in tqdm(model_paths):
-        model = MODEL_DICT[params.model](N=N, params=params)
-        model.load_state_dict(t.load(model_path))
-        models.append(model)
-    return models, params
-
-
 def save_measurements(estimates, compared_values, path):
     # fix this other values business
     data_to_save = {"LLC estimate": estimates, "Accuracy G_1": compared_values}

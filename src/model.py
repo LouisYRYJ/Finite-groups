@@ -67,6 +67,23 @@ def custom_kaiming(dims):
     # Assumes shape [..., fan_in, fan_out]
     return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2])))
 
+def custom_kaiming_uniform(dims, scale=1.):
+    # Assumes shape [..., fan_in, fan_out]
+    params = t.empty(dims)
+    bound = np.sqrt(1. / float(dims[-2])) * scale
+    params.uniform_(-bound, bound)
+    return nn.Parameter(params)
+
+def normal(dims):
+    return nn.Parameter(t.randn(dims))
+
+INITS = {
+    'xavier': custom_xavier,
+    'kaiming': custom_kaiming,
+    'kaiming_uniform': custom_kaiming_uniform,
+    'normal': normal,
+}
+
     
 class InstancedModule(ABC, nn.Module):
     '''
@@ -148,26 +165,40 @@ class MLP2(InstancedModule):
         super().__init__()
         self.params = params
         self.N = N
+        init_func = INITS[params.init_func]
 
-        self.embedding_left = custom_kaiming(
+        # self.embedding_left = init_func(
+        self.embedding_left = normal(
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.embedding_right = custom_kaiming(
+        # self.embedding_right = init_func(
+        self.embedding_right = normal(
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.linear_left = custom_kaiming(
-            [params.instances, params.embed_dim, params.hidden_size]
+        # Dashiell concats the linear layers into a single Linear  size (2 * embed_dim, hidden_size)
+        # This is equivalent except fan-in is different, affecting init scaling
+        # Account for this with 1 / np.sqrt(2)
+        self.linear_left = init_func(
+            [params.instances, params.embed_dim, params.hidden_size], scale= 1/np.sqrt(2)
         )
 
-        self.linear_right = custom_kaiming(
-            [params.instances, params.embed_dim, params.hidden_size]
+        self.linear_right = init_func(
+            [params.instances, params.embed_dim, params.hidden_size], scale= 1/np.sqrt(2)
         )
 
-        self.unembedding = custom_kaiming(
+        self.unembedding = init_func(
             [params.instances, params.hidden_size, self.N]
         )
+
+        if params.unembed_bias:
+            bias = t.empty((params.instances, self.N))
+            bound = 1 / np.sqrt(params.hidden_size)    # 1 / sqrt(fan_in)
+            bias.uniform_(-bound, bound)
+            self.unembed_bias = nn.Parameter(bias)
+        else:
+            self.unembed_bias = None
 
         if params.activation == "gelu":
             self.activation = nn.GELU()
@@ -219,6 +250,13 @@ class MLP2(InstancedModule):
             self.unembedding,
             "batch_size instances hidden, instances hidden d_vocab-> batch_size instances d_vocab ",
         )
+        if self.unembed_bias is not None:
+            out += einops.repeat(
+                self.unembed_bias,
+                'instances d_vocab -> batch_size instances d_vocab',
+                batch_size=out.shape[0]
+            )
+
         return out
 
 class MLP3(InstancedModule):

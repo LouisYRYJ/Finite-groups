@@ -7,6 +7,7 @@ from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
 from typing import Callable, Union, Any, Optional
 from utils import *
+import utils
 from itertools import product
 from collections import defaultdict
 import warnings
@@ -17,6 +18,7 @@ from sympy.combinatorics import PermutationGroup, Permutation
 from sympy.combinatorics.named_groups import AlternatingGroup
 from tqdm import tqdm
 from methodtools import lru_cache
+from model import InstancedModule
 
 
 # TODO: Find a better place to put this.
@@ -110,10 +112,10 @@ class Group:
     @staticmethod
     def from_model(
         model: nn.Module,
-        instance: None,
+        instance: int,
         elements: None,
     ) -> Group:
-        table = model_table(model)
+        table = utils.model_table(model[instance]).squeeze(0)
         N = table.shape[0]
         elements = list(range(N)) if not elements else elements
         return Group(elements, table)
@@ -403,11 +405,13 @@ def A(n: int) -> Group:
 def S(n: int) -> Group:
     # Construct this as semidirect prod of A(n) and Z/2
     # To have consistent labeling with A(n) x Z/2
-    return twisted(
+    Sn = twisted(
         A(n),
         lambda p: Permutation(0, 1) * p * Permutation(0, 1),
         m=2,
     )
+    Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
+    return Sn
 
 @jaxtyped(typechecker=beartype)
 def string_to_groups(strings: Union[str, tuple[str, ...], list[str]]) -> list[Group]:

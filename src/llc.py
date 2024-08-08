@@ -195,7 +195,7 @@ def get_llc(
         cur_trace = einops.rearrange(cur_trace, '(chain instance) ... -> chain instance ...', chain=cbatch_size).mean(dim=0)
         trace += cur_trace
     trace /= num_chain_batches
-    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive, pos_func=pos_func) #, traces
+    return llc_from_trace(trace, orig_loss, beta, burnin=burnin, positive=positive, pos_func=pos_func), trace
 
 def plot_trace(trace: Float[t.Tensor, 'instance epoch']) -> go.Figure:
     fig = go.Figure()

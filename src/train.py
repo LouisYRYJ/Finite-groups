@@ -55,9 +55,12 @@ class Parameters:
     thresh_grok: float = 0.95
     project: str = "group generalization"
     model: str = "MLP3"
+    unembed_bias: bool = False
+    init_func: str = "kaiming"
 
 
 def train(model, group_dataset, params):
+    # import pdb; pdb.set_trace()
     if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
@@ -125,7 +128,7 @@ def train(model, group_dataset, params):
             json_str = json.dumps(dataclasses.asdict(params))
             f.write(json_str)
 
-    # wandb.watch(model, log="all", log_freq=10)
+    wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
     epoch_train_margin = t.full((params.instances,), np.inf, device=device)

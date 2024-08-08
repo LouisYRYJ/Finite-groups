@@ -3,6 +3,7 @@ import random
 import torch as t
 from torch import nn
 import torch.nn.functional as F
+from model import MODEL_DICT
 from devinterp.optim.sgld import SGLD
 from devinterp.slt import estimate_learning_coeff_with_summary, estimate_learning_coeff
 from torch.utils.data import DataLoader
@@ -14,6 +15,9 @@ from itertools import product
 import glob
 import numpy as np
 from model import InstancedModule
+import json
+import os
+import re
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -243,17 +247,52 @@ def autocast(x: Any) -> Any:
     except:
         return x
 
-def model_table(model, instance=0):
+@jaxtyped(typechecker=beartype)
+@t.no_grad()
+def model_table(model: InstancedModule) -> Int[t.Tensor, 'instance N N']:
     """Returns the model's current multiplication table"""
+    inputs = t.tensor(list(product(range(model.N), repeat=2)), dtype=int).to(device)
+    model.eval()
+    logits = model(inputs)  # shape N^2 x instance x N
+    max_prob_entry = t.argmax(logits, dim=-1)  # shape N^2 x instance
+    return einops.rearrange(max_prob_entry, " (n m) instance -> instance n m", n=model.N)  # shape instance x N x N
 
-    input = t.tensor(list(product(range(model.N), repeat=2)), dtype=int)
+def get_number_from_filename(filename):
+    match = re.search(r"(\d+)", filename)
+    if match:
+        return int(match.group(1))
+    return -1
 
-    with t.no_grad():
-        model.eval()
-        logits = model(input)  # shape N^2 x instance x N
-        max_prob_entry = t.argmax(logits, dim=-1)[:, instance]  # shape N^2
-        z = rearrange(max_prob_entry, " (n m) -> n m", n=model.N)  # shape N x N
-    return z
+def load_model_paths(path, sel=None):
+    from train import Parameters
+    model_paths = []
+
+    with open(path + "/params.json", "r") as f:
+        json_str = f.read()
+        params = Parameters(**json.loads(json_str))
+
+    for root, dirs, files in os.walk(path + "/ckpts"):
+        for filename in sorted(files, key=get_number_from_filename)[1:]:
+            model_paths.append(os.path.join(root, filename))
+
+    if (isinstance(sel, str) and sel.lower() == 'final') or len(model_paths) == 0:
+        model_paths = [os.path.join(root, 'final.pt')]
+    elif sel is not None:
+        model_paths = model_paths[sel]
+
+    return model_paths, params
+
+def load_models(path, sel=None):
+    model_paths, params = load_model_paths(path, sel=sel)
+    models = []
+    N = len(string_to_groups(params.group_string)[0])
+    for model_path in tqdm(model_paths):
+        model = MODEL_DICT[params.model](N=N, params=params)
+        model.load_state_dict(t.load(model_path))
+        models.append(model)
+    return models, params
+
+
 
 # Use this to quickly create a params object for testing.
 # Please don't use for anything else; very hacky.

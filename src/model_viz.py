@@ -12,44 +12,31 @@ from group_data import string_to_groups
 from itertools import product
 from typing import Union
 from tqdm import tqdm
+from model import InstancedModule
+from jaxtyping import Bool, Int, Float, jaxtyped
+from datetime import datetime
+device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 
-def model_table(model, instance=0):
-    """Returns the model's current multiplication table"""
-
-    input = t.tensor(list(product(range(model.N), repeat=2)), dtype=int)
-
-    with t.no_grad():
-        model.eval()
-        logits = model(input)  # shape N^2 x instance x N
-        max_prob_entry = t.argmax(logits, dim=-1)[:, instance]  # shape N^2
-        z = rearrange(max_prob_entry, " (n m) -> n m", n=model.N)  # shape N x N
-    return z
-
-
-def plot_table(models, params, instance=0, save=False):
+def plot_table(table: Float[t.Tensor, 'instance N N'], params, instance=0, save=False):
     """
-    Animated plot of the multiplication tables of models
+    Animated plot over instances of multiplication table
     """
-    if not isinstance(models, Union[list, tuple]):
-        models = [models]
-
     groups = string_to_groups(params.group_string)
     group = groups[0]
     heatmaps = []
     row_labels = [str(g) for g in groups[0].elements]
     col_labels = row_labels
+    instances, N = table.shape[0], table.shape[1]
 
-    itr = models if len(models) < 5 else tqdm(models)
-    for model in itr:
-        table = model_table(model, instance=instance)
+    for instance in tqdm(range(instances)):
         hover_labels = [
-            [group.idx_to_elem(table[j][i]) for i in range(model.N)]
-            for j in range(model.N)
+            [str(group.idx_to_elem(table[instance, j, i])) for i in range(N)]
+            for j in range(N)
         ]
         heatmaps.append(
             go.Heatmap(
-                z=table,
+                z=table[instance].cpu().numpy(),
                 showscale=False,
                 x=col_labels,
                 y=row_labels,
@@ -60,6 +47,7 @@ def plot_table(models, params, instance=0, save=False):
                 + "z=%{customdata}<extra></extra>",
             ),
         )
+
     frames = [
         go.Frame(data=[heatmap], name=f"frame{i}") for i, heatmap in enumerate(heatmaps)
     ]
@@ -72,7 +60,7 @@ def plot_table(models, params, instance=0, save=False):
             "side": "top",
             "ticks": "outside",
             "tickmode": "array",
-            "tickvals": [i for i in range(model.N)],
+            "tickvals": [i for i in range(N)],
             "ticktext": row_labels,
         },
         yaxis={
@@ -81,7 +69,7 @@ def plot_table(models, params, instance=0, save=False):
             "side": "left",
             "ticks": "outside",
             "tickmode": "array",
-            "tickvals": [i for i in range(model.N)],
+            "tickvals": [i for i in range(N)],
             "ticktext": col_labels,
         },
         height=900,
@@ -150,7 +138,10 @@ def plot_table(models, params, instance=0, save=False):
         if not os.path.exists("plots"):
             os.mkdir("plots")
 
-        fig.write_html("./plots/model_table.html")
+        time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path= f'{os.getcwd()}/plots/model_table_{time}.html'
+        print(path)
+        fig.write_html(path)
     return fig
 
 
@@ -161,7 +152,7 @@ def indicator_table(model, params, instance=0):
     • 3 if z[i][j]=m_1(i,j)=m_2(i,j)
     • 0 else
     """
-    z = model_table(model, instance=instance)
+    z = model_table(model).squeeze(0)  # squeeze instance dim
 
     groups = string_to_groups(params.group_string)
     cardinality = len(groups[0])
@@ -188,13 +179,13 @@ def plot_indicator_table(model, params, save=False):
         for j in range(cardinality)
     ]
 
-    input = t.tensor([g[:2] for g in group_set], dtype=int)
+    inputs = t.tensor([g[:2] for g in group_set], dtype=int).to(device)
 
     with t.no_grad():
         model.eval()
 
         logits = model(
-            input
+            inputs 
         )  # shape N^2 x instance x N, this is hacky since the model forward creates params.n.instance
 
         max_prob_entry = t.argmax(logits, dim=-1)[:, 0].squeeze(-1)  # shape N^2 x 1
