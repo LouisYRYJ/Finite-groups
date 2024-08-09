@@ -284,13 +284,20 @@ def load_models(path, sel=None):
     model_paths, params = load_model_paths(path, sel=sel)
     models = []
     N = len(string_to_groups(params.group_string)[0])
-    for model_path in tqdm(model_paths):
+    itr = model_paths if len(model_paths) < 5 else tqdm(model_paths)
+    for model_path in itr:
         model = MODEL_DICT[params.model](N=N, params=params)
         model.load_state_dict(t.load(model_path))
         models.append(model)
     return models, params
 
-
+def load_models_itr(path, sel=None):
+    model_paths, params = load_model_paths(path, sel=sel)
+    N = len(string_to_groups(params.group_string)[0])
+    for model_path in model_paths:
+        model = MODEL_DICT[params.model](N=N, params=params)
+        model.load_state_dict(t.load(model_path))
+        yield model
 
 # Use this to quickly create a params object for testing.
 # Please don't use for anything else; very hacky.
