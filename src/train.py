@@ -56,7 +56,8 @@ class Parameters:
     project: str = "group generalization"
     model: str = "MLP3"
     unembed_bias: bool = False
-    init_func: str = "kaiming"
+    init_func: str = "kaiming_uniform"
+    correct_embed: bool = False
 
 
 def train(model, group_dataset, params):
@@ -116,7 +117,7 @@ def train(model, group_dataset, params):
     step = 0
     checkpoint_every = None
     directory_path = f"{ROOT}/models/{current_time}_{params.name}"
-    directory_path = re.sub(r"[^a-zA-Z0-9_/]", "_", directory_path)
+    directory_path = re.sub(r"[^a-zA-Z0-9_/\-]", "_", directory_path)
     if params.checkpoint > 0:
         checkpoint_every = params.checkpoint
 
