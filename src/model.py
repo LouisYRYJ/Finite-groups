@@ -84,6 +84,14 @@ INITS = {
     'normal': normal,
 }
 
+ACTS = {
+    'gelu': nn.GELU(),
+    'relu': nn.ReLU(),
+    'linear': lambda x: x,
+    'square': lambda x: x**2,
+    'abs': t.abs,
+}
+
     
 class InstancedModule(ABC, nn.Module):
     '''
@@ -200,14 +208,8 @@ class MLP2(InstancedModule):
         else:
             self.unembed_bias = None
 
-        if params.activation == "gelu":
-            self.activation = nn.GELU()
-        elif params.activation == "relu":
-            self.activation = nn.ReLU()
-        elif params.activation == "linear":
-            self.activation = lambda x: x
-        else:
-            raise ValueError("Activation not recognized")
+        self.activation = ACTS[params.activation]
+
 
     @jaxtyped(typechecker=beartype)
     def _forward(
@@ -259,6 +261,7 @@ class MLP2(InstancedModule):
 
         return out
 
+    @t.no_grad()
     def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
         '''
         Left and right pre-activation neuron weights
@@ -267,12 +270,12 @@ class MLP2(InstancedModule):
             self.embedding_left,
             self.linear_left,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
-        )
+        ).detach()
         neurons_right = einops.einsum(
             self.embedding_right,
             self.linear_right,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
-        )
+        ).detach()
         return neurons_left, neurons_right
 
 class MLP3(InstancedModule):
@@ -283,8 +286,9 @@ class MLP3(InstancedModule):
         super().__init__()
         self.params = params
         self.N = N
+        init_func = INITS[params.init_func]
 
-        self.embedding_left = custom_kaiming(
+        self.embedding_left = normal(
             [
                 params.instances,
                 self.N,
@@ -292,26 +296,19 @@ class MLP3(InstancedModule):
             ]
         )
 
-        self.embedding_right = custom_kaiming(
+        self.embedding_right = normal(
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.linear = custom_kaiming(
+        self.linear = init_func(
             [params.instances, params.embed_dim, params.hidden_size]
         )
 
-        self.unembedding = custom_kaiming(
+        self.unembedding = init_func(
             [params.instances, params.hidden_size, self.N]
         )
 
-        if params.activation == "gelu":
-            self.activation = nn.GELU()
-        elif params.activation == "relu":
-            self.activation = nn.ReLU()
-        elif params.activation == "linear":
-            self.activation = lambda x: x
-        else:
-            raise ValueError("Activation not recognized")
+        self.activation = ACTS[params.activation]
 
     @jaxtyped(typechecker=beartype)
     def _forward(
@@ -350,6 +347,7 @@ class MLP3(InstancedModule):
         )
         return out
 
+    @t.no_grad()
     def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
         '''
         Left and right pre-activation neuron weights
@@ -358,12 +356,12 @@ class MLP3(InstancedModule):
             self.embedding_left,
             self.linear,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
-        )
+        ).detach()
         neurons_right = einops.einsum(
             self.embedding_right,
             self.linear,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
-        )
+        ).detach()
         return neurons_left, neurons_right
 
 
@@ -375,8 +373,9 @@ class MLP4(InstancedModule):
         super().__init__()
         self.params = params
         self.N = N
+        init_func = INITS[params.init_func]
 
-        self.embedding_left = custom_kaiming(
+        self.embedding_left = normal(
             [
                 params.instances,
                 self.N,
@@ -384,22 +383,13 @@ class MLP4(InstancedModule):
             ]
         )
 
-        self.embedding_right = custom_kaiming(
+        self.embedding_right = normal(
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.unembedding = custom_kaiming([params.instances, params.embed_dim, self.N])
+        self.unembedding = init_func([params.instances, params.embed_dim, self.N])
+        self.activation = ACTS[params.activation]
 
-        if params.activation == "gelu":
-            self.activation = nn.GELU()
-        elif params.activation == "relu":
-            self.activation = nn.ReLU()
-        elif params.activation == "linear":
-            self.activation = lambda x: x
-        elif params.activation == "square":
-            self.activation = lambda x: x**2
-        else:
-            raise ValueError("Activation not recognized")
 
     @jaxtyped(typechecker=beartype)
     def _forward(
@@ -435,11 +425,12 @@ class MLP4(InstancedModule):
         )
         return out
 
+    @t.no_grad()
     def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab embed_dim']:
         '''
         Left and right pre-activation neuron weights
         '''
-        return self.embedding_left, self.embedding_right
+        return self.embedding_left.detach(), self.embedding_right.detach()
 
 
 class Normal(InstancedModule):
