@@ -1,4 +1,23 @@
-from group import *
+import torch as t
+from torch import nn
+from group import Group
+from jaxtyping import Bool, Int, Float, jaxtyped
+from beartype import beartype
+from typing import Callable, Union, Any, Optional
+import pathlib
+import os
+from sympy.combinatorics import PermutationGroup, Permutation
+from sympy.combinatorics.named_groups import AlternatingGroup
+import math
+
+ROOT = pathlib.Path(__file__).parent.parent.resolve()
+GAP_ROOT = "/usr/share/gap"
+if os.path.isdir(GAP_ROOT):
+    os.environ["GAP_ROOT"] = GAP_ROOT
+    from gappy import gap
+    from gappy.gapobj import GapObj
+else:
+    print("WARNING: GAP is not installed!")
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
@@ -75,11 +94,13 @@ def semidirect_product(
 
 @jaxtyped(typechecker=beartype)
 def direct_product(group1: Group, group2: Group) -> Group:
-    return semidirect_product(group1, group2, lambda x: lambda y: y)
-
+    ret = semidirect_product(group1, group2, lambda x: lambda y: y)
+    # TODO: compute gap_repr for general semidirect_product
+    if None not in [group1.gap_repr, group2.gap_repr]:
+        ret.gap_repr = gap.DirectProduct(group1.gap_repr, group2.gap_repr)
+    return ret
 
 times = direct_product
-
 
 @jaxtyped(typechecker=beartype)
 def Z(*args: int) -> Group:
@@ -225,3 +246,6 @@ def S(n: int) -> Group:
     Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
     return Sn
 
+def Q(p: int) -> Group:
+    # Extra special group of order p^3 with exponent p
+    return Group.from_gap(gap.ExtraspecialGroup(p**3, p))

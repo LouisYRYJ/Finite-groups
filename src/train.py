@@ -231,5 +231,5 @@ def parse() -> Parameters:
 if __name__ == "__main__":
     params = parse()
     group_dataset = GroupData(params=params)
-    model = MODEL_DICT[params.model](group_dataset.N, params=params).to(device)
+    model = MODEL_DICT[params.model](params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)

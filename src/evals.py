@@ -12,7 +12,7 @@ from train import Parameters
 from model import MLP2, MLP3
 import torch as t
 from group_data import GroupData, string_to_groups
-from utils import test_loss, measure_llc
+from utils import *
 from torch.utils.data import DataLoader
 import re
 from dataclasses import dataclass

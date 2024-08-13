@@ -1,26 +1,23 @@
 from __future__ import annotations
-from torch.utils.data import Dataset
 import torch as t
 from torch import nn
 import random
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
 from typing import Callable, Union, Any, Optional
-from utils import *
-import utils
 from itertools import product
 from collections import defaultdict
 import warnings
 from collections import Counter
 import matplotlib.pyplot as plt
 import math
-from sympy.combinatorics import PermutationGroup, Permutation
-from sympy.combinatorics.named_groups import AlternatingGroup
 from tqdm import tqdm
 from methodtools import lru_cache
 import pathlib
 import hashlib
 import os
+from sympy.combinatorics import PermutationGroup, Permutation
+import einops
 
 ROOT = pathlib.Path(__file__).parent.parent.resolve()
 GAP_ROOT = "/usr/share/gap"
@@ -30,18 +27,6 @@ if os.path.isdir(GAP_ROOT):
     from gappy.gapobj import GapObj
 else:
     print("WARNING: GAP is not installed!")
-
-
-# TODO: Find a better place to put this.
-# Can't put in utils b/c utils imports GroupData
-@jaxtyped(typechecker=beartype)
-def frac_str(a: Union[int, float], b: Union[int, float]) -> str:
-    return f"{a}/{b} ({a/b:.2f})"
-
-
-def random_frac(full_dataset, frac):
-    num_indices = int(len(full_dataset) * frac)
-    return random.sample(list(full_dataset), num_indices)
 
 
 class Group:
@@ -54,6 +39,7 @@ class Group:
         self.elements = elements
         self.cayley_table = cayley_table
         self.name = name
+        self.gap_repr = None   # group as GapObj
 
     @lru_cache(maxsize=None)  # lru_cache is probably faster than index?
     def elem_to_idx(self, elem):
@@ -132,14 +118,16 @@ class Group:
         return Group(elements, table)
 
     @staticmethod
-    def from_gap(group: GapObj) -> Group:
-        elements = [str(elem) for elem in group.Elements()]
+    def from_gap(gap_group: GapObj) -> Group:
+        elements = [str(elem) for elem in gap_group.Elements()]
         N = len(elements)
-        gap_table = group.MultiplicationTable()
+        gap_table = gap_group.MultiplicationTable()
         table = t.zeros((N, N), dtype=t.int64)
         for i, j in product(range(N), repeat=2):
             table[i, j] = int(gap_table[i, j]) - 1  # gap_table is 1-indexed
-        return Group(elements, table)
+        ret = Group(elements, table)
+        ret.gap_repr = gap_group
+        return ret
 
     def to_gap(self) -> GapObj:
         return gap.GroupByMultiplicationTable(
@@ -230,45 +218,78 @@ class Group:
 
     @lru_cache(maxsize=None)
     def get_subgroups_idx(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
-        '''Return set of all subgroups of the group'''
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_path = f'{cache_dir}/{self.hash()}'
-        if os.path.exists(cache_path):
-            return t.load(cache_path)
+        '''
+        Return set of all subgroups of the group
+        '''
+        if cache_dir is not None:
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_path = f'{cache_dir}/{self.hash()}'
+            if os.path.exists(cache_path):
+                return t.load(cache_path)
+        else:
+            cache_path = None
 
-        print('Computing subgroups')
-        gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self))
-        print('Computing orders')
-        gap_subgroups = [g for g in gap_subgroups if g.Order() > 1 and g.Order() < len(self)] # do trivial and full group separately for efficiency
-        print('Computing elements')
-        subgroups= {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
-        subgroups |= {
-            frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()]) for subgroup in tqdm(gap_subgroups, desc='Computing subgroups')
-        }
-        # print(f"Found {len(subgroups)} subgroups up to conjugates with orders", [len(s) for s in subgroups])
-
-        print('Computing conjugates')
-        for h in list(subgroups):
+        if self.gap_repr is None:
+            print('Computing subgroups')
+            gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self))
+            # do trivial and full group separately for efficiency
+            gap_subgroups = [g for g in tqdm(gap_subgroups, desc='Computing orders') if g.Order() > 1 and g.Order() < len(self)]
+            subgroups= {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
+            subgroups |= {
+                frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()]) for subgroup in tqdm(gap_subgroups, desc='Computing elements')
+            }
+        else:
+            print('Computing subgroups from gap_repr')
+            assert set(self.elements) == set(map(str, self.gap_repr.Elements())), "self.elements and self.gap_repr.Elements() don't match!"
+            subgroups = {frozenset(map(lambda g: self.elem_to_idx(str(g)), s.Elements())) for s in self.gap_repr.AllSubgroups()}
+        
+        for h in tqdm(list(subgroups), desc='Computing conjugates'):
             subgroups |= {frozenset(self.get_conj_subgroup_idx(h, g)) for g in range(len(self))}
 
-        print('Saving to', cache_path)
-        t.save(subgroups, cache_path)
+        if cache_path is not None:
+            print('Saving to', cache_path)
+            t.save(subgroups, cache_path)
         return subgroups
 
+    # TODO: FINISH THIS!!
+    # @lru_cache(maxsize=None)
+    # def get_irreps(self):
+    #     '''
+    #     Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
+    #     '''
+    #     if self.gap_repr is None:
+    #         gap_group = self.to_gap_fp()
+    #         to_idx = self.fp_elem_to_idx
+    #     else:
+    #         gap_group = self.gap_repr
+    #         to_idx = self.elem_to_idx
+
+    #     irreps = gap.IrreducibleRepresentations(gap_group)
+    #     d_count = defaultdict(lambda: 0)
+    #     ret = dict()
+    #     for irrep in irreps:
+    #         dim = len(irrep.Image(gap_group.Identity()))
+    #         name = f'{dim}d-{d_count[dim]}'
+    #         d_count[dim] += 1
+    #         basis = [None] * len(self)
+    #         for gap_elem in gap_group.Elements():
+    #             basis[to_idx(gap_elem)] = t.tensor(irrep.Image(gap_elem))
+    #         basis = t.stack([t.tensor() for g ])
+            
     @lru_cache(maxsize=None)
     def get_subgroups(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
         return {frozenset(map(self.idx_to_elem, h)) for h in self.get_subgroups_idx(cache_dir=cache_dir)}
 
-    @staticmethod
-    def from_model(
-        model: nn.Module,
-        instance: int,
-        elements: None,
-    ) -> Group:
-        table = utils.model_table(model[instance]).squeeze(0)
-        N = table.shape[0]
-        elements = list(range(N)) if not elements else elements
-        return Group(elements, table)
+    # @staticmethod
+    # def from_model(
+    #     model: nn.Module,
+    #     instance: int,
+    #     elements: None,
+    # ) -> Group:
+    #     table = utils.model_table(model[instance]).squeeze(0)
+    #     N = table.shape[0]
+    #     elements = list(range(N)) if not elements else elements
+    #     return Group(elements, table)
 
     @lru_cache(maxsize=None)
     def is_latin(self) -> bool:

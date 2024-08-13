@@ -8,7 +8,8 @@ import numpy as np
 from beartype import beartype
 from copy import deepcopy
 from abc import ABC, abstractmethod
-
+import group_data
+from group_utils import *
 
 class MLP(nn.Module):
     def __init__(self, params):
@@ -169,10 +170,10 @@ class MLP2(InstancedModule):
     '''
     Architecture used by Chughtai et al. and Stander et al.
     '''
-    def __init__(self, N, params):
+    def __init__(self, params):
         super().__init__()
         self.params = params
-        self.N = N
+        self.N = len(group_data.string_to_groups(params.group_string)[0])
         init_func = INITS[params.init_func]
 
         # self.embedding_left = init_func(
@@ -282,10 +283,10 @@ class MLP3(InstancedModule):
     '''
     This architecture isn't used by any existing work. Our own invention :)
     '''
-    def __init__(self, N, params):
+    def __init__(self, params):
         super().__init__()
         self.params = params
-        self.N = N
+        self.N = len(group_data.string_to_groups(params.group_string)[0])
         init_func = INITS[params.init_func]
 
         self.embedding_left = normal(
@@ -369,10 +370,11 @@ class MLP4(InstancedModule):
     """
     Architecture studied in Morwani et al. "Feature emergence via margin maximization"
     """
-    def __init__(self, N, params):
+    def __init__(self, params):
         super().__init__()
         self.params = params
-        self.N = N
+        self.N = params.N
+        self.N = len(group_data.string_to_groups(params.group_string)[0])
         init_func = INITS[params.init_func]
 
         self.embedding_left = normal(

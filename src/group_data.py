@@ -1,29 +1,14 @@
-from group import *
+import torch as t
+from torch import nn
+from group import Group
 from named_groups import *
-
-@jaxtyped(typechecker=beartype)
-def string_to_groups(strings: Union[str, tuple[str, ...], list[str]]) -> list[Group]:
-    """
-    Input string s should be calls to above functions (returning NxN multiplication tables), delimited by ';'
-    """
-    if isinstance(strings, str):
-        strings = strings.split(";")
-    ret = []
-    for s in strings:
-        group = eval(s)
-        if isinstance(group, Group):
-            if group.name == "group":
-                group.name = s
-            ret.append(group)
-        elif isinstance(group, tuple) or isinstance(group, list):
-            for i, g in enumerate(group):
-                if g.name == "group":
-                    g.name = f"{s}_{i}"
-            ret.extend(group)
-        else:
-            raise ValueError(f"Invalid group: {s}")
-    return ret
-
+from torch.utils.data import Dataset
+from jaxtyping import Bool, Int, Float, jaxtyped
+from beartype import beartype
+from typing import Callable, Union, Any, Optional
+from collections import defaultdict
+from utils import *
+from group_utils import *
 
 class GroupData(Dataset):
     def __init__(self, params):
