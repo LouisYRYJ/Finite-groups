@@ -1,6 +1,6 @@
 import torch as t
 from torch import nn
-from group import Group
+from group import *
 from jaxtyping import Bool, Int, Float, jaxtyped
 from beartype import beartype
 from typing import Callable, Union, Any, Optional
@@ -234,7 +234,6 @@ def abFam(a: int, b: int, r=None) -> Optional[list[Group]]:
 def A(n: int) -> Group:
     return Group.from_sympy(AlternatingGroup(n))
 
-
 def S(n: int) -> Group:
     # Construct this as semidirect prod of A(n) and Z/2
     # To have consistent labeling with A(n) x Z/2
@@ -245,6 +244,9 @@ def S(n: int) -> Group:
     )
     Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
     return Sn
+
+def gapS(n: int) -> Group:
+    return Group.from_gap(gap.SymmetricGroup(n))
 
 def Q(p: int) -> Group:
     # Extra special group of order p^3 with exponent p

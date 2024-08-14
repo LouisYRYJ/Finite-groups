@@ -83,6 +83,14 @@ class GroupTests(unittest.TestCase):
         # g = S(5)
         # subgroups = g.get_subgroups()
         # self.assertEqual(len(subgroups), 156)
+
+    def test_irreps(self):
+        g = gapS(5)
+        irreps = g.get_irreps()
+        self.assertEqual(
+            set(irreps.keys()),
+            {'1d-0', '1d-1', '4d-0', '4d-1', '5d-0', '5d-1', '6d-0'}
+        )
         
 
 if __name__ == '__main__':

@@ -252,29 +252,37 @@ class Group:
         return subgroups
 
     # TODO: FINISH THIS!!
-    # @lru_cache(maxsize=None)
-    # def get_irreps(self):
-    #     '''
-    #     Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
-    #     '''
-    #     if self.gap_repr is None:
-    #         gap_group = self.to_gap_fp()
-    #         to_idx = self.fp_elem_to_idx
-    #     else:
-    #         gap_group = self.gap_repr
-    #         to_idx = self.elem_to_idx
+    @lru_cache(maxsize=None)
+    def get_irreps(self):
+        '''
+        Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
+        NOTE: Currently fails for any complex-valued irreps
+        TODO: Add support for Cyclotomic -> torch.complex?
+        '''
+        if self.gap_repr is None:
+            gap_group = self.to_gap_fp()
+            to_idx = self.fp_elem_to_idx
+        else:
+            gap_group = self.gap_repr
+            to_idx = self.elem_to_idx
 
-    #     irreps = gap.IrreducibleRepresentations(gap_group)
-    #     d_count = defaultdict(lambda: 0)
-    #     ret = dict()
-    #     for irrep in irreps:
-    #         dim = len(irrep.Image(gap_group.Identity()))
-    #         name = f'{dim}d-{d_count[dim]}'
-    #         d_count[dim] += 1
-    #         basis = [None] * len(self)
-    #         for gap_elem in gap_group.Elements():
-    #             basis[to_idx(gap_elem)] = t.tensor(irrep.Image(gap_elem))
-    #         basis = t.stack([t.tensor() for g ])
+        irreps = gap.IrreducibleRepresentations(gap_group)
+        d_count = defaultdict(lambda: 0)
+        ret = dict()
+        for irrep in irreps:
+            dim = len(irrep.Image(gap_group.Identity()))
+            name = f'{dim}d-{d_count[dim]}'
+            d_count[dim] += 1
+            basis = [None] * len(self)
+            for gap_elem in gap_group.Elements():
+                basis[to_idx(str(gap_elem))] = t.tensor(
+                    [
+                        [float(irrep.Image(gap_elem)[i][j]) for i in range(dim)]
+                         for j in range(dim)
+                    ]
+                )
+            ret[name] = t.stack(basis, dim=0)
+        return ret
             
     @lru_cache(maxsize=None)
     def get_subgroups(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
