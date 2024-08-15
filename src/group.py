@@ -26,6 +26,7 @@ if os.path.isdir(GAP_ROOT):
     os.environ["GAP_ROOT"] = GAP_ROOT
     from gappy import gap
     from gappy.gapobj import GapObj
+    gap.eval('LoadPackage("SmallGrp");')
 else:
     print("WARNING: GAP is not installed!")
 
@@ -108,6 +109,14 @@ class Group:
             x = self.mult(x, a)
             n += 1
         return n
+
+    @staticmethod
+    def from_func(elements, mult: Callable) -> Group:
+        N = len(elements)
+        table = t.zeros((N, N), dtype=t.int64)
+        for (i, a), (j, b) in product(enumerate(elements), repeat=2):
+            table[i, j] = elements.index(mult(a, b))
+        return Group(elements, table)
 
     @staticmethod
     def from_sympy(pgroup: PermutationGroup) -> Group:

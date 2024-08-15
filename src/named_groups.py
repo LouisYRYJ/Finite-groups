@@ -16,6 +16,7 @@ if os.path.isdir(GAP_ROOT):
     os.environ["GAP_ROOT"] = GAP_ROOT
     from gappy import gap
     from gappy.gapobj import GapObj
+    gap.eval('LoadPackage("SmallGrp");')
 else:
     print("WARNING: GAP is not installed!")
 
@@ -134,6 +135,21 @@ def twisted(group: Group, automorphism: Callable[..., Any], m: int = 2) -> Group
 
     return semidirect_product(group, cyclic(m), phi)
 
+def autZ(n: int) -> Group:
+    '''
+    Multiplicative group of Z(n), i.e. Aut(Z(n)).
+    Has order phi(n), where phi is the Euler totient function.
+    '''
+    elements = [i for i in range(1, n) if math.gcd(i, n) == 1]
+    mult = lambda a, b: (a * b) % n
+    return Group.from_func(elements, mult)
+
+def holZ(n: int) -> Group:
+    '''
+    The holomorph of Z(n), which has order n*phi(n), where phi is the Euler totient function.
+    '''
+    phi = lambda a, n=n: lambda b, n=n: (a * b) % n
+    return semidirect_product(Z(n), autZ(n), phi)
 
 @jaxtyped(typechecker=beartype)
 def D(N: int) -> Group:
@@ -253,3 +269,6 @@ def gapS(n: int) -> Group:
 def P(p: int) -> Group:
     # Extra special group of order p^3 with exponent p
     return Group.from_gap(gap.ExtraspecialGroup(p**3, p))
+
+def smallgrp(N: int, idx: int) -> Group:
+    return Group.from_gap(gap.SmallGroup(N, idx))
