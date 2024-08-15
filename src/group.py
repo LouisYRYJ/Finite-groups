@@ -18,6 +18,7 @@ import hashlib
 import os
 from sympy.combinatorics import PermutationGroup, Permutation
 import einops
+import numpy as np
 
 ROOT = pathlib.Path(__file__).parent.parent.resolve()
 GAP_ROOT = "/usr/share/gap"
@@ -251,13 +252,10 @@ class Group:
             t.save(subgroups, cache_path)
         return subgroups
 
-    # TODO: FINISH THIS!!
     @lru_cache(maxsize=None)
-    def get_irreps(self):
+    def get_complex_irreps(self):
         '''
         Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
-        NOTE: Currently fails for any complex-valued irreps
-        TODO: Add support for Cyclotomic -> torch.complex?
         '''
         if self.gap_repr is None:
             gap_group = self.to_gap_fp()
@@ -265,7 +263,32 @@ class Group:
         else:
             gap_group = self.gap_repr
             to_idx = self.elem_to_idx
-
+            
+        def to_complex(z):
+            try:
+                ret = float(z)
+            except TypeError:
+                # Gap cyclotomic numbers look like -E(5)^3
+                z = str(z)
+                neg = z[0] == '-'
+                if neg:
+                    z = z[1:]
+                if '^' in z:
+                    root, exp = str(z).split('^')
+                else:
+                    root = z
+                    exp = 1
+                root = float(root.strip('E()'))
+                exp = float(exp)
+                real = np.cos(2 * exp * np.pi / root)
+                imag = np.sin(2 * exp * np.pi / root)
+                real = real if np.abs(real) > 1e-10 else 0.
+                imag = imag if np.abs(imag) > 1e-10 else 0.
+                ret = t.complex(t.tensor(real).double(), t.tensor(imag).double()).item()
+                if neg:
+                    ret *= -1
+            return ret
+                
         irreps = gap.IrreducibleRepresentations(gap_group)
         d_count = defaultdict(lambda: 0)
         ret = dict()
@@ -277,12 +300,37 @@ class Group:
             for gap_elem in gap_group.Elements():
                 basis[to_idx(str(gap_elem))] = t.tensor(
                     [
-                        [float(irrep.Image(gap_elem)[i][j]) for i in range(dim)]
+                        [to_complex(irrep.Image(gap_elem)[i][j]) for i in range(dim)]
                          for j in range(dim)
                     ]
                 )
             ret[name] = t.stack(basis, dim=0)
         return ret
+
+    @lru_cache(maxsize=None)
+    def get_real_irreps(self):
+        # TODO: check that our strategy here is correct
+        real_irreps = dict()
+        d_count = defaultdict(lambda: 0)
+        for irrep in self.get_complex_irreps().values():
+            if not irrep.is_complex() or irrep.imag.abs().max() < 1e-10:
+                real_irrep = irrep.real
+            else:
+                real_irrep = t.concat(
+                    [
+                        t.concat([irrep.real, -irrep.imag], dim=2), 
+                        t.concat([irrep.imag, irrep.real], dim=2)
+                    ],
+                    dim=1
+                )
+            dim = real_irrep.shape[-1]
+            real_irreps[f'{dim}d-{d_count[dim]}'] = real_irrep
+            d_count[dim] += 1
+        return real_irreps
+
+    # for convenience
+    def get_irreps(self, real=False):
+        return self.get_real_irreps() if real else self.get_complex_irreps()
             
     @lru_cache(maxsize=None)
     def get_subgroups(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:

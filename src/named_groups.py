@@ -246,8 +246,10 @@ def S(n: int) -> Group:
     return Sn
 
 def gapS(n: int) -> Group:
+    # This is isomorphic to S(n), but comes with a gap_repr
+    # So it's much faster to do gap operations (subsets, irreps) on
     return Group.from_gap(gap.SymmetricGroup(n))
 
-def Q(p: int) -> Group:
+def P(p: int) -> Group:
     # Extra special group of order p^3 with exponent p
     return Group.from_gap(gap.ExtraspecialGroup(p**3, p))
