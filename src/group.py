@@ -2,7 +2,7 @@ from __future__ import annotations
 import torch as t
 from torch import nn
 import random
-from jaxtyping import Bool, Int, Float, jaxtyped
+from jaxtyping import Bool, Int, Float, Inexact, jaxtyped
 from beartype import beartype
 from typing import Callable, Union, Any, Optional
 from itertools import product
@@ -30,6 +30,65 @@ if os.path.isdir(GAP_ROOT):
 else:
     print("WARNING: GAP is not installed!")
 
+
+# TODO: Move to utils or smth
+def is_complex(M, thresh=1e-10):
+    ret = t.is_complex(M) and M.imag.abs().max() > thresh
+    if isinstance(ret, t.Tensor):
+        ret = ret.item()
+    return ret
+
+@jaxtyped(typechecker=beartype)
+@t.no_grad()
+def simul_real(M: Inexact[t.Tensor, 'n d d'], thresh: float=1e-3) -> Float[t.Tensor, 'n d d']:
+    '''
+    Given n dxd unitary matrices M[i], assuming the existence of a shared dxd U s.t. U^{-1}M[i]U is real,
+    returns this U^{-1}MU
+    '''
+    if not is_complex(M):
+        return M
+
+    n, d = M.shape[0], M.shape[1]
+
+    # Strategy: find change of basis that makes \sum_i a[i] M[i] real for randomly sampled real a[i]
+    # NOTE: I haven't rigorously checked that this always works...
+    a = t.complex(t.randn(n), t.zeros(n))
+    aM = einops.einsum(a, M, 'n, n d1 d2 -> d1 d2')
+    L, V = t.linalg.eig(aM)
+    real_idxs = [] # List of idxs of real eigenvalues
+    cplx_idxs = [] # List of pairs (idx, conj_idx)
+    all_idxs = set(range(d))
+    while all_idxs:
+        idx = all_idxs.pop()
+        if not is_complex(L[idx], thresh=thresh):
+            real_idxs.append(idx)
+        else:
+            found_conj = False
+            for conj_idx in list(all_idxs):
+                if (t.conj(L[idx]) - L[conj_idx]).norm() < thresh:
+                    all_idxs.remove(conj_idx)
+                    cplx_idxs.append((idx, conj_idx))
+                    found_conj = True
+            if not found_conj:
+                assert False, f'Found complex eig {L[idx].item()} without conjugate pair in {L}'
+    
+    H = t.zeros((d, d), dtype=M.dtype)
+    for i in real_idxs:
+        H[i, i] = 1.
+    for i, j in cplx_idxs:
+        H[i, i] = complex(1, 0) / np.sqrt(2)
+        H[j, j] = complex(-1, 0) / np.sqrt(2)
+        H[i, j] = complex(0, -1) / np.sqrt(2)
+        H[j, i] = complex(0, 1) / np.sqrt(2)
+    U = V @ H
+    assert not is_complex(t.linalg.inv(U) @ aM @ U, thresh=thresh)
+    ret = einops.einsum(
+        t.linalg.inv(U), M, U,
+        'd0 d1, n d1 d2, d2 d3 -> n d0 d3'
+    )
+    import pdb; pdb.set_trace()
+    assert not is_complex(ret, thresh=thresh)
+    return ret
 
 class Group:
     """
