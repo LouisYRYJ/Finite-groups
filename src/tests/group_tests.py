@@ -105,13 +105,14 @@ class GroupTests(unittest.TestCase):
             {'1d-0', '1d-1', '4d-0', '4d-1', '5d-0', '5d-1', '6d-0'}
         )
 
-    def test_simul_real(self):
-        U = t.randn(10, 10, dtype=t.cfloat)
-        Uinv = t.linalg.inv(U)
-        rM = t.complex(t.randn(20, 10, 10), t.zeros((20, 10, 10)))
-        M = einops.einsum(Uinv, rM, U, 'd0 d1, n d1 d2, d2 d3 -> n d0 d3')
-        ret = simul_real(M)
-        self.assertFalse(is_complex(ret))
+    def test_frobenius_schur(self):
+        g = smallgrp(110, 1)
+        irreps = g.get_irreps(real=False)
+        indicators = {g.get_frobenius_schur(irrep) for irrep in irreps.values()}
+        self.assertEqual(
+            indicators,
+            set([1] * 3 + [0] * 8)
+        )
         
 
 if __name__ == '__main__':
