@@ -84,7 +84,7 @@ class GroupTests(unittest.TestCase):
         # subgroups = g.get_subgroups()
         # self.assertEqual(len(subgroups), 156)
 
-    def test_irreps(self):
+    def test_complex_irreps(self):
         g = Z(4)
         irreps = g.get_irreps()
         real_irreps = g.get_irreps(real=True)
@@ -96,14 +96,58 @@ class GroupTests(unittest.TestCase):
             set(real_irreps.keys()),
             {'1d-0', '1d-1', '2d-0', '2d-1'}
         )
-        
+        for irrep in irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+        for irrep in real_irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+
+        g = D(8)
+        irreps = g.get_irreps()
+        real_irreps = g.get_irreps(real=True)
+        self.assertEqual(
+            set(irreps.keys()),
+            {'1d-0', '1d-1', '1d-2', '1d-3', '2d-0', '2d-1', '2d-2'}
+        )
+        self.assertEqual(
+            set(real_irreps.keys()),
+            {'1d-0', '1d-1', '1d-2', '1d-3', '2d-0', '2d-1', '2d-2'}
+        )
+        for irrep in irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+        for irrep in real_irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
 
         g = gapS(5)
         irreps = g.get_irreps()
+        real_irreps = g.get_irreps(True)
         self.assertEqual(
             set(irreps.keys()),
             {'1d-0', '1d-1', '4d-0', '4d-1', '5d-0', '5d-1', '6d-0'}
         )
+        self.assertEqual(
+            set(real_irreps.keys()),
+            {'1d-0', '1d-1', '4d-0', '4d-1', '5d-0', '5d-1', '6d-0'}
+        )
+        for irrep in irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+        for irrep in real_irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+
+        g = smallgrp(110, 1)
+        irreps = g.get_irreps()
+        real_irreps = g.get_irreps(True)
+        self.assertEqual(
+            set(irreps.keys()),
+            {'1d-0', '1d-1', '1d-2', '1d-3', '1d-4', '1d-5', '1d-6', '1d-7', '1d-8', '1d-9', '10d-0'}
+        )
+        self.assertEqual(
+            set(real_irreps.keys()),
+            {'1d-0', '1d-1', '2d-0', '2d-1', '2d-2', '2d-3', '2d-4', '2d-5', '2d-6', '2d-7', '10d-0'}
+        )
+        for irrep in irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
+        for irrep in real_irreps.values():
+            self.assertTrue(g.is_irrep(irrep))
 
     def test_frobenius_schur(self):
         g = smallgrp(110, 1)
@@ -113,7 +157,7 @@ class GroupTests(unittest.TestCase):
             indicators,
             set([1] * 3 + [0] * 8)
         )
-        
+
 
 if __name__ == '__main__':
     unittest.main()

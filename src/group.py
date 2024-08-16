@@ -320,15 +320,15 @@ class Group:
             dim = len(irrep.Image(gap_group.Identity()))
             name = f'{dim}d-{d_count[dim]}'
             d_count[dim] += 1
-            basis = [None] * len(self)
+            M = [None] * len(self)
             for gap_elem in gap_group.Elements():
-                basis[to_idx(str(gap_elem))] = t.tensor(
+                M[to_idx(str(gap_elem))] = t.tensor(
                     [
-                        [to_complex(irrep.Image(gap_elem)[i][j]) for i in range(dim)]
+                        [to_complex(irrep.Image(gap_elem)[j][i]) for i in range(dim)]
                          for j in range(dim)
                     ]
                 )
-            ret[name] = t.stack(basis, dim=0)
+            ret[name] = t.stack(M, dim=0)
         return ret
     
     def get_frobenius_schur(
@@ -348,14 +348,40 @@ class Group:
             return t.round(ret).int().item()
 
     @lru_cache(maxsize=None)
-    def get_real_irreps(self):
-        # TODO: check that our strategy here is correct
+    def get_real_irreps(self, max_tries=100):
         real_irreps = dict()
         d_count = defaultdict(lambda: 0)
         for irrep in self.get_complex_irreps().values():
             if not irrep.is_complex() or irrep.imag.abs().max() < 1e-10:
                 real_irrep = irrep.real
-            else:
+            elif int(self.get_frobenius_schur(irrep)) == 1:   # real irrep
+                # In this case, let \rho be the irrep.
+                # We are guaranteed a symmetric S st S\rho(g)S^{-1}=\rho^*(g) for all g
+                # 1) Find this S by averaging over G (https://en.wikipedia.org/wiki/Schur%27s_lemma#Corollary_of_Schur's_Lemma)
+                # 2) Transform by sqrt(S) (Lemma 2.12.6 in https://sites.ualberta.ca/~vbouchar/MAPH464/section-real-complex.html)
+                d = irrep.shape[-1]
+                S = t.zeros((d, d), dtype=irrep.dtype)
+                tries = 0
+                while S.abs().max() < 1e-5 or (S - S.T).abs().max() > 1e-5:
+                    H = t.randn((d, d), dtype=irrep.dtype)
+                    H /= t.trace(H)
+                    S = sum(
+                        t.linalg.inv(irrep[i]) @ H @ t.conj(irrep[i])
+                        for i in range(len(self))
+                    )
+                    if tries > max_tries:
+                        assert False, f"Exceeded {max_tries} tries without finding nonzero symmetric S"
+                    tries += 1
+                S = (S + S.T) / 2
+                L, V = t.linalg.eig(S)
+                W = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)
+                real_irrep = einops.einsum(
+                    W, irrep, t.linalg.inv(W),
+                    'd0 d1, n d1 d2, d2 d3 -> n d0 d3'
+                )
+                assert real_irrep.imag.abs().max() < 1e-5, 'Real irrep transformation failed!'
+                real_irrep = real_irrep.real
+            else:  # complex or quaternionic irrep
                 real_irrep = t.concat(
                     [
                         t.concat([irrep.real, -irrep.imag], dim=2), 
@@ -363,10 +389,17 @@ class Group:
                     ],
                     dim=1
                 )
-            dim = real_irrep.shape[-1]
-            real_irreps[f'{dim}d-{d_count[dim]}'] = real_irrep
-            d_count[dim] += 1
+            d = real_irrep.shape[-1]
+            real_irreps[f'{d}d-{d_count[d]}'] = real_irrep
+            d_count[d] += 1
         return real_irreps
+        
+    def is_irrep(self, irrep, thresh=1e-4):
+        for i, j in product(range(len(self)), repeat=2):
+            if (irrep[i] @ irrep[j] - irrep[self.mult_idx(i, j)]).abs().max() > thresh:
+                import pdb; pdb.set_trace()
+                return False
+        return True
 
     # for convenience
     def get_irreps(self, real=False):
