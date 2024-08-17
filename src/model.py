@@ -373,7 +373,6 @@ class MLP4(InstancedModule):
     def __init__(self, params):
         super().__init__()
         self.params = params
-        self.N = params.N
         self.N = len(group_data.string_to_groups(params.group_string)[0])
         init_func = INITS[params.init_func]
 

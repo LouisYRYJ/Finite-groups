@@ -292,25 +292,9 @@ class Group:
             try:
                 ret = float(z)
             except TypeError:
-                # Gap cyclotomic numbers look like -E(5)^3
-                z = str(z)
-                neg = z[0] == '-'
-                if neg:
-                    z = z[1:]
-                if '^' in z:
-                    root, exp = str(z).split('^')
-                else:
-                    root = z
-                    exp = 1
-                root = float(root.strip('E()'))
-                exp = float(exp)
-                real = np.cos(2 * exp * np.pi / root)
-                imag = np.sin(2 * exp * np.pi / root)
-                real = real if np.abs(real) > 1e-10 else 0.
-                imag = imag if np.abs(imag) > 1e-10 else 0.
-                ret = t.complex(t.tensor(real).double(), t.tensor(imag).double()).item()
-                if neg:
-                    ret *= -1
+                # Gap cyclotomic numbers look like -E(5)^3+E(5)^1
+                E = lambda k: complex(np.cos(2 * np.pi / k), np.sin(2 * np.pi / k))
+                ret = eval(str(z).replace('^', '**'))
             return ret
                 
         irreps = gap.IrreducibleRepresentations(gap_group)
@@ -370,6 +354,7 @@ class Group:
                         for i in range(len(self))
                     )
                     if tries > max_tries:
+                        import pdb; pdb.set_trace()
                         assert False, f"Exceeded {max_tries} tries without finding nonzero symmetric S"
                     tries += 1
                 S = (S + S.T) / 2
