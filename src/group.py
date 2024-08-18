@@ -352,7 +352,7 @@ class Group:
                     S = sum(
                         t.linalg.inv(irrep[i]) @ H @ t.conj(irrep[i])
                         for i in range(len(self))
-                    )
+                    ) / len(self)
                     if tries > max_tries:
                         import pdb; pdb.set_trace()
                         assert False, f"Exceeded {max_tries} tries without finding nonzero symmetric S"
