@@ -1,5 +1,6 @@
 from group_data import *
 import unittest
+import torch as t
 
 class GroupTests(unittest.TestCase):
     def test_cyclic(self):
@@ -84,7 +85,9 @@ class GroupTests(unittest.TestCase):
         # subgroups = g.get_subgroups()
         # self.assertEqual(len(subgroups), 156)
 
-    def test_complex_irreps(self):
+    def test_irreps(self):
+        is_unitary = lambda m: t.allclose(m.mH, t.linalg.inv(m), atol=1e-5)  # this works with batched matrices
+        
         g = Z(4)
         irreps = g.get_irreps()
         real_irreps = g.get_irreps(real=True)
@@ -98,6 +101,7 @@ class GroupTests(unittest.TestCase):
         )
         for irrep in irreps.values():
             self.assertTrue(g.is_irrep(irrep))
+            self.assertTrue(is_unitary(irrep))
         for irrep in real_irreps.values():
             self.assertTrue(g.is_irrep(irrep))
 
@@ -114,6 +118,7 @@ class GroupTests(unittest.TestCase):
         )
         for irrep in irreps.values():
             self.assertTrue(g.is_irrep(irrep))
+            self.assertTrue(is_unitary(irrep))
         for irrep in real_irreps.values():
             self.assertTrue(g.is_irrep(irrep))
 
@@ -130,6 +135,7 @@ class GroupTests(unittest.TestCase):
         )
         for irrep in irreps.values():
             self.assertTrue(g.is_irrep(irrep))
+            self.assertTrue(is_unitary(irrep))
         for irrep in real_irreps.values():
             self.assertTrue(g.is_irrep(irrep))
 
@@ -146,6 +152,7 @@ class GroupTests(unittest.TestCase):
         )
         for irrep in irreps.values():
             self.assertTrue(g.is_irrep(irrep))
+            self.assertTrue(is_unitary(irrep))
         for irrep in real_irreps.values():
             self.assertTrue(g.is_irrep(irrep))
 

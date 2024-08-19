@@ -26,6 +26,7 @@ if os.path.isdir(GAP_ROOT):
     os.environ["GAP_ROOT"] = GAP_ROOT
     from gappy import gap
     from gappy.gapobj import GapObj
+
     gap.eval('LoadPackage("SmallGrp");')
 else:
     print("WARNING: GAP is not installed!")
@@ -38,6 +39,7 @@ def is_complex(M, thresh=1e-10):
         ret = ret.item()
     return ret
 
+
 class Group:
     """
     Implements a group as a idx -> element lookup table and a Cayley table on idxs.
@@ -48,7 +50,7 @@ class Group:
         self.elements = elements
         self.cayley_table = cayley_table
         self.name = name
-        self.gap_repr = None   # group as GapObj
+        self.gap_repr = None  # group as GapObj
 
     @lru_cache(maxsize=None)  # lru_cache is probably faster than index?
     def elem_to_idx(self, elem):
@@ -182,35 +184,35 @@ class Group:
         return self.exponent_idx(a, power)
 
     def fp_elem_to_idx(self, fp_elem):
-        '''
+        """
         GAP fp groups have elements like f1^2*f2^3*f3^-1. Parse to idx.
-        '''
-        fp_elem = str(fp_elem).replace('*', '')  # * not necessary for parsing
-        if 'identity' in fp_elem:
+        """
+        fp_elem = str(fp_elem).replace("*", "")  # * not necessary for parsing
+        if "identity" in fp_elem:
             return self.identity_idx()
 
         def get_power(fp_elem):
             # returns power, remaining string
-            if not fp_elem or fp_elem[0] != '^':
+            if not fp_elem or fp_elem[0] != "^":
                 return 1, fp_elem
             else:
-                power = ''
+                power = ""
                 fp_elem = fp_elem[1:]
-                while fp_elem and (fp_elem[0].isdigit() or fp_elem[0] == '-'):
+                while fp_elem and (fp_elem[0].isdigit() or fp_elem[0] == "-"):
                     power += fp_elem[0]
                     fp_elem = fp_elem[1:]
                 return int(power), fp_elem
 
         def next_token(fp_elem):
             # returns token, power, remaining string
-            if fp_elem[0] == '(':
-                return '(', None, fp_elem[1:]
-            elif fp_elem[0] == ')':
+            if fp_elem[0] == "(":
+                return "(", None, fp_elem[1:]
+            elif fp_elem[0] == ")":
                 fp_elem = fp_elem[1:]
                 power, fp_elem = get_power(fp_elem)
-                return ')', power, fp_elem
-            elif fp_elem[0] == 'f':
-                token = ''
+                return ")", power, fp_elem
+            elif fp_elem[0] == "f":
+                token = ""
                 fp_elem = fp_elem[1:]
                 while fp_elem and fp_elem[0].isdigit():
                     token += fp_elem[0]
@@ -223,16 +225,16 @@ class Group:
         stack = [self.identity_idx()]
         while fp_elem:
             token, power, fp_elem = next_token(fp_elem)
-            if token == '(':
+            if token == "(":
                 stack.append(self.identity_idx())
-            elif token == ')':
+            elif token == ")":
                 cur = stack.pop()
                 stack[-1] = self.mult_idx(stack[-1], self.exponent_idx(cur, power))
             else:
                 assert isinstance(token, int)
                 stack[-1] = self.mult_idx(stack[-1], self.exponent_idx(token, power))
 
-        assert len(stack) == 1, 'Mismatched parentheses!'
+        assert len(stack) == 1, "Mismatched parentheses!"
         ret = stack[0]
         if isinstance(ret, t.Tensor):
             ret = ret.item()
@@ -242,89 +244,125 @@ class Group:
         return self.idx_to_elem(self.fp_elem_to_idx(fp_elem))
 
     @lru_cache(maxsize=None)
-    def get_subgroups_idx(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
-        '''
+    def get_subgroups_idx(self, cache_dir=None) -> list[set]:
+        """
         Return set of all subgroups of the group
-        '''
+        """
         if cache_dir is not None:
             os.makedirs(cache_dir, exist_ok=True)
-            cache_path = f'{cache_dir}/{self.hash()}'
+            cache_path = f"{cache_dir}/{self.hash()}"
             if os.path.exists(cache_path):
                 return t.load(cache_path)
         else:
             cache_path = None
 
         if self.gap_repr is None:
-            print('Computing subgroups')
+            print("Computing subgroups")
             gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self))
             # do trivial and full group separately for efficiency
-            gap_subgroups = [g for g in tqdm(gap_subgroups, desc='Computing orders') if g.Order() > 1 and g.Order() < len(self)]
-            subgroups= {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
+            gap_subgroups = [
+                g
+                for g in tqdm(gap_subgroups, desc="Computing orders")
+                if g.Order() > 1 and g.Order() < len(self)
+            ]
+            subgroups = {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
             subgroups |= {
-                frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()]) for subgroup in tqdm(gap_subgroups, desc='Computing elements')
+                frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()])
+                for subgroup in tqdm(gap_subgroups, desc="Computing elements")
             }
         else:
-            print('Computing subgroups from gap_repr')
-            assert set(self.elements) == set(map(str, self.gap_repr.Elements())), "self.elements and self.gap_repr.Elements() don't match!"
-            subgroups = {frozenset(map(lambda g: self.elem_to_idx(str(g)), s.Elements())) for s in self.gap_repr.AllSubgroups()}
-        
-        for h in tqdm(list(subgroups), desc='Computing conjugates'):
-            subgroups |= {frozenset(self.get_conj_subgroup_idx(h, g)) for g in range(len(self))}
+            print("Computing subgroups from gap_repr")
+            assert set(self.elements) == set(
+                map(str, self.gap_repr.Elements())
+            ), "self.elements and self.gap_repr.Elements() don't match!"
+            subgroups = {
+                frozenset(map(lambda g: self.elem_to_idx(str(g)), s.Elements()))
+                for s in self.gap_repr.AllSubgroups()
+            }
+
+        for h in tqdm(list(subgroups), desc="Computing conjugates"):
+            subgroups |= {
+                frozenset(self.get_conj_subgroup_idx(h, g)) for g in range(len(self))
+            }
 
         if cache_path is not None:
-            print('Saving to', cache_path)
+            print("Saving to", cache_path)
             t.save(subgroups, cache_path)
         return subgroups
 
     @lru_cache(maxsize=None)
     def get_complex_irreps(self):
-        '''
+        """
         Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
-        '''
+        Guaranteed to return unitary irreps.
+        """
         if self.gap_repr is None:
             gap_group = self.to_gap_fp()
             to_idx = self.fp_elem_to_idx
         else:
             gap_group = self.gap_repr
             to_idx = self.elem_to_idx
-            
+
         def to_complex(z):
             try:
                 ret = float(z)
             except TypeError:
                 # Gap cyclotomic numbers look like -E(5)^3+E(5)^1
                 E = lambda k: complex(np.cos(2 * np.pi / k), np.sin(2 * np.pi / k))
-                ret = eval(str(z).replace('^', '**'))
+                ret = eval(str(z).replace("^", "**"))
             return ret
-                
+
         irreps = gap.IrreducibleRepresentations(gap_group)
         d_count = defaultdict(lambda: 0)
         ret = dict()
         for irrep in irreps:
             dim = len(irrep.Image(gap_group.Identity()))
-            name = f'{dim}d-{d_count[dim]}'
+            name = f"{dim}d-{d_count[dim]}"
             d_count[dim] += 1
             M = [None] * len(self)
             for gap_elem in gap_group.Elements():
                 M[to_idx(str(gap_elem))] = t.tensor(
                     [
                         [to_complex(irrep.Image(gap_elem)[j][i]) for i in range(dim)]
-                         for j in range(dim)
+                        for j in range(dim)
                     ]
                 )
-            ret[name] = t.stack(M, dim=0)
+            ret[name] = self.unitarize_irrep(t.stack(M, dim=0))
         return ret
-    
+
+    def unitarize_irrep(
+        self, irrep: Inexact[t.tensor, "n d d"]
+    ) -> Inexact[t.tensor, "n d d"]:
+        """
+        Unitarize given complex irrep by averaging over G
+        """
+        assert irrep.shape[0] == len(self)
+        irrep = irrep.to(t.complex64)
+        H = (irrep.mH @ irrep).mean(dim=0)
+        L, V = t.linalg.eig(H)
+        H_sqrt = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)
+        H_sqrt_inv = t.linalg.inv(H_sqrt)
+        irrep = einops.einsum(
+            H_sqrt, irrep, H_sqrt_inv,
+            "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
+        )
+        assert t.allclose(irrep.mH, t.linalg.inv(irrep), atol=1e-5), "Unitarization failed!"
+        return irrep
+
     def get_frobenius_schur(
-        self, irrep: Inexact[t.tensor, 'n d d'], power: int=2,
+        self,
+        irrep: Inexact[t.tensor, "n d d"],
+        power: int = 2,
     ) -> Int:
-        '''
+        """
         Returns Frobenius-Schur indicator of irrep.
         irrep[i] is a dxd matrix for each element idx i
         Indexing should be the same as for self.elements
-        '''
+        """
         assert irrep.shape[0] == len(self)
-        ret = (sum(t.trace(irrep[self.pow_idx(g, power)]) for g in range(len(self))) / len(self))
+        ret = sum(
+            t.trace(irrep[self.pow_idx(g, power)]) for g in range(len(self))
+        ) / len(self)
         if t.is_complex(ret):
             assert ret.imag.abs().item() < 1e-6
             return t.round(ret.real).int().item()
@@ -338,7 +376,7 @@ class Group:
         for irrep in self.get_complex_irreps().values():
             if not irrep.is_complex() or irrep.imag.abs().max() < 1e-10:
                 real_irrep = irrep.real
-            elif int(self.get_frobenius_schur(irrep)) == 1:   # real irrep
+            elif int(self.get_frobenius_schur(irrep)) == 1:  # real irrep
                 # In this case, let \rho be the irrep.
                 # We are guaranteed a symmetric S st S\rho(g)S^{-1}=\rho^*(g) for all g
                 # 1) Find this S by averaging over G (https://en.wikipedia.org/wiki/Schur%27s_lemma#Corollary_of_Schur's_Lemma)
@@ -348,51 +386,51 @@ class Group:
                 tries = 0
                 while S.abs().max() < 1e-5 or (S - S.T).abs().max() > 1e-5:
                     H = t.randn((d, d), dtype=irrep.dtype)
-                    H /= t.trace(H)
-                    S = sum(
-                        t.linalg.inv(irrep[i]) @ H @ t.conj(irrep[i])
-                        for i in range(len(self))
-                    ) / len(self)
+                    S = (t.linalg.inv(t.conj(irrep)) @ H @ irrep).mean(dim=0)
                     if tries > max_tries:
-                        import pdb; pdb.set_trace()
                         assert False, f"Exceeded {max_tries} tries without finding nonzero symmetric S"
                     tries += 1
                 S = (S + S.T) / 2
+                S /= (S @ S.H).diag().mean().sqrt()
+                assert t.allclose(S @ S.H, t.eye(d, dtype=S.dtype), atol=1e-5), "S is not unitary!"
                 L, V = t.linalg.eig(S)
-                W = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)
+                W = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)  # sqrt of S
                 real_irrep = einops.einsum(
-                    W, irrep, t.linalg.inv(W),
-                    'd0 d1, n d1 d2, d2 d3 -> n d0 d3'
+                    W, irrep, t.linalg.inv(W), "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
                 )
-                assert real_irrep.imag.abs().max() < 1e-5, 'Real irrep transformation failed!'
+                assert (
+                    real_irrep.imag.abs().max() < 1e-5
+                ), "Real irrep transformation failed!"
                 real_irrep = real_irrep.real
             else:  # complex or quaternionic irrep
                 real_irrep = t.concat(
                     [
-                        t.concat([irrep.real, -irrep.imag], dim=2), 
-                        t.concat([irrep.imag, irrep.real], dim=2)
+                        t.concat([irrep.real, -irrep.imag], dim=2),
+                        t.concat([irrep.imag, irrep.real], dim=2),
                     ],
-                    dim=1
+                    dim=1,
                 )
             d = real_irrep.shape[-1]
-            real_irreps[f'{d}d-{d_count[d]}'] = real_irrep
+            real_irreps[f"{d}d-{d_count[d]}"] = real_irrep
             d_count[d] += 1
         return real_irreps
-        
+
     def is_irrep(self, irrep, thresh=1e-4):
         for i, j in product(range(len(self)), repeat=2):
             if (irrep[i] @ irrep[j] - irrep[self.mult_idx(i, j)]).abs().max() > thresh:
-                import pdb; pdb.set_trace()
                 return False
         return True
 
     # for convenience
     def get_irreps(self, real=False):
         return self.get_real_irreps() if real else self.get_complex_irreps()
-            
+
     @lru_cache(maxsize=None)
-    def get_subgroups(self, cache_dir=f'{ROOT}/subgroups/') -> list[set]:
-        return {frozenset(map(self.idx_to_elem, h)) for h in self.get_subgroups_idx(cache_dir=cache_dir)}
+    def get_subgroups(self, cache_dir=f"{ROOT}/subgroups/") -> list[set]:
+        return {
+            frozenset(map(self.idx_to_elem, h))
+            for h in self.get_subgroups_idx(cache_dir=cache_dir)
+        }
 
     # @staticmethod
     # def from_model(
@@ -456,7 +494,7 @@ class Group:
 
     @lru_cache(maxsize=None)
     def get_conj(self, a, b):
-        '''Conjugate of a by b'''
+        """Conjugate of a by b"""
         return self.mult(self.inv(b), self.mult(a, b))
 
     @lru_cache(maxsize=None)
@@ -465,7 +503,7 @@ class Group:
 
     @lru_cache(maxsize=1024)
     def get_conj_subgroup(self, subgroup, b):
-        '''Conjugate of a subgroup by b'''
+        """Conjugate of a subgroup by b"""
         return set([self.get_conj(a, b) for a in subgroup])
 
     @lru_cache(maxsize=None)
@@ -474,7 +512,7 @@ class Group:
 
     @lru_cache(maxsize=None)
     def get_cosets_idx(self, subgroup, left=True):
-        '''Returns left/right cosets of subgroup in self'''
+        """Returns left/right cosets of subgroup in self"""
         cosets = set()
         for i in range(len(self)):
             if left:
