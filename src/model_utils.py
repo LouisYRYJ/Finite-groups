@@ -34,6 +34,8 @@ def load_model_paths(path, sel=None):
         model_paths = [os.path.join(root, 'final.pt')]
     elif sel is not None:
         model_paths = model_paths[sel]
+        if isinstance(sel, int):
+            model_paths = [model_paths]
 
     return model_paths, params
 
