@@ -28,6 +28,7 @@ if os.path.isdir(GAP_ROOT):
     from gappy.gapobj import GapObj
 
     gap.eval('LoadPackage("SmallGrp");')
+    gap.eval('LoadPackage("TransGrp");')
 else:
     print("WARNING: GAP is not installed!")
 
@@ -278,7 +279,10 @@ class Group:
             assert set(self.elements) == set(
                 map(str, self.gap_repr.Elements())
             ), "self.elements and self.gap_repr.Elements() don't match!"
-            gap_subgroups = [gap.Representative(c) for c in self.gap_repr.ConjugacyClassesSubgroups()]
+            try:
+                gap_subgroups = [gap.Representative(c) for c in self.gap_repr.ConjugacyClassesSubgroups()]
+            except:
+                import pdb; pdb.set_trace()
             to_idx = self.elem_to_idx
 
         if verbose:
