@@ -243,8 +243,19 @@ class Group:
     def fp_elem_to_elem(self, fp_elem):
         return self.idx_to_elem(self.fp_elem_to_idx(fp_elem))
 
+    def form_subgroup(self, elements):
+        '''
+        Subset of self.elements -> subgroup Group object
+        '''
+        assert set(elements).issubset(set(self.elements))
+        N = len(elements)
+        table = t.zeros((N, N), dtype=t.int64)
+        for (i, a), (j, b) in product(enumerate(elements), repeat=2):
+            table[i, j] = elements.index(self.mult(a, b))
+        return Group(elements, table)
+
     @lru_cache(maxsize=None)
-    def get_subgroups_idx(self, cache_dir=None) -> list[set]:
+    def get_subgroups_idx(self, cache_dir=None, conjugates=True, verbose=True) -> dict[frozenset]:
         """
         Return set of all subgroups of the group
         """
@@ -257,38 +268,64 @@ class Group:
             cache_path = None
 
         if self.gap_repr is None:
-            print("Computing subgroups")
+            if verbose:
+                print("Computing subgroups")
             gap_subgroups = self.to_gap_fp().LowIndexSubgroupsFpGroup(len(self))
-            # do trivial and full group separately for efficiency
-            gap_subgroups = [
-                g
-                for g in tqdm(gap_subgroups, desc="Computing orders")
-                if g.Order() > 1 and g.Order() < len(self)
-            ]
-            subgroups = {frozenset([self.identity_idx()]), frozenset(range(len(self)))}
-            subgroups |= {
-                frozenset([self.fp_elem_to_idx(elem) for elem in subgroup.Elements()])
-                for subgroup in tqdm(gap_subgroups, desc="Computing elements")
-            }
+            to_idx = self.fp_elem_to_idx
         else:
-            print("Computing subgroups from gap_repr")
+            if verbose:
+                print("Computing subgroups from gap_repr")
             assert set(self.elements) == set(
                 map(str, self.gap_repr.Elements())
             ), "self.elements and self.gap_repr.Elements() don't match!"
-            subgroups = {
-                frozenset(map(lambda g: self.elem_to_idx(str(g)), s.Elements()))
-                for s in self.gap_repr.AllSubgroups()
-            }
+            gap_subgroups = [gap.Representative(c) for c in self.gap_repr.ConjugacyClassesSubgroups()]
+            to_idx = self.elem_to_idx
 
-        for h in tqdm(list(subgroups), desc="Computing conjugates"):
-            subgroups |= {
-                frozenset(self.get_conj_subgroup_idx(h, g)) for g in range(len(self))
-            }
+        if verbose:
+            itr = tqdm(gap_subgroups, desc="Computing orders")
+        else:
+            itr = gap_subgroups
+        # do trivial subgroups separately for efficiency
+        gap_subgroups = [
+            (str(gap.StructureDescription(g)).replace(' ', ''), g)
+            for g in itr
+            if g.Order() > 1 and g.Order() < len(self)
+        ]
+        subgroups = {
+            '1': frozenset([self.identity_idx()]), 
+            self.gap_describe(): frozenset(range(len(self)))
+        }
+        name_counts = defaultdict(lambda: 0)
+        if verbose:
+            itr = tqdm(gap_subgroups, desc="Computing elements")
+        else:
+            itr = gap_subgroups
+        for name, gap_subgroup in itr:
+            subgroup = frozenset([to_idx(str(elem)) for elem in gap_subgroup.Elements()])
+            if subgroup not in set(subgroups.values()):
+                subgroups[f'{name}_{name_counts[name]}'] = subgroup
+                name_counts[name] += 1
+
+            if conjugates:
+                for g in range(len(self)):
+                    conjugate = frozenset(self.get_conj_subgroup_idx(subgroup, g))
+                    if conjugate not in set(subgroups.values()):
+                        subgroups[f'{name}_{name_counts[name]}'] = conjugate
+                        name_counts[name] += 1
 
         if cache_path is not None:
             print("Saving to", cache_path)
             t.save(subgroups, cache_path)
         return subgroups
+
+    @lru_cache(maxsize=None)
+    def get_subgroups(self, cache_dir=None, conjugates=True, verbose=True) -> list[set]:
+        return {
+            k: frozenset(map(self.idx_to_elem, v))
+            for k, v in self.get_subgroups_idx(
+                cache_dir=cache_dir, conjugates=conjugates, verbose=verbose
+            ).items()
+        }
 
     @lru_cache(maxsize=None)
     def get_complex_irreps(self):
@@ -426,11 +463,12 @@ class Group:
         return self.get_real_irreps() if real else self.get_complex_irreps()
 
     @lru_cache(maxsize=None)
-    def get_subgroups(self, cache_dir=f"{ROOT}/subgroups/") -> list[set]:
-        return {
-            frozenset(map(self.idx_to_elem, h))
-            for h in self.get_subgroups_idx(cache_dir=cache_dir)
-        }
+    def gap_describe(self) -> str:
+        return str(
+            gap.StructureDescription(
+                self.gap_repr if self.gap_repr is not None else self.to_gap_fp()
+            )
+        ).replace(' ', '')
 
     # @staticmethod
     # def from_model(

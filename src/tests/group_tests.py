@@ -71,14 +71,16 @@ class GroupTests(unittest.TestCase):
         )
 
     def test_subgroups(self):
-        g = S(4)
-        subgroups = g.get_subgroups()
-        self.assertEqual(len(subgroups), 30)
-        self.assertEqual(
-            {len(h) for h in subgroups}, 
-            # See https://groupprops.subwiki.org/wiki/Subgroup_structure_of_symmetric_group:S4
-            set([1] + [2] * 9 + [4] * 7 + [8] * 3 + [3] * 4 + [6] * 4  + [12] + [24])
-        )
+        # gapS(4) has a gap_repr
+        # S(4) doesn't have a gap_repr, so uses to_gap_fp
+        for g in [gapS(4), S(4)]:
+            subgroups = g.get_subgroups(verbose=False).values()
+            self.assertEqual(len(subgroups), 30)
+            self.assertEqual(
+                {len(h) for h in subgroups}, 
+                # See https://groupprops.subwiki.org/wiki/Subgroup_structure_of_symmetric_group:S4
+                set([1] + [2] * 9 + [4] * 7 + [8] * 3 + [3] * 4 + [6] * 4  + [12] + [24])
+            )
 
         # This takes ~1 min
         # g = S(5)
