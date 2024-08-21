@@ -317,6 +317,9 @@ class Group:
                         subgroups[f'{name}_{name_counts[name]}'] = conjugate
                         name_counts[name] += 1
 
+        if all(count <= 1 for count in name_counts.values()):
+            subgroups = {k.split('_')[0]: v for k, v in subgroups.items()}
+
         if cache_path is not None:
             print("Saving to", cache_path)
             t.save(subgroups, cache_path)
