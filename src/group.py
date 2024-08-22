@@ -414,10 +414,10 @@ class Group:
             return t.round(ret).int().item()
 
     @lru_cache(maxsize=None)
-    def get_real_irreps(self, max_tries=100):
+    def get_real_irreps(self, max_tries=100, verbose=False):
         real_irreps = dict()
         d_count = defaultdict(lambda: 0)
-        for irrep in self.get_complex_irreps().values():
+        for complex_name, irrep in self.get_complex_irreps().items():
             if not irrep.is_complex() or irrep.imag.abs().max() < 1e-10:
                 real_irrep = irrep.real
             elif int(self.get_frobenius_schur(irrep)) == 1:  # real irrep
@@ -447,6 +447,9 @@ class Group:
                 ), "Real irrep transformation failed!"
                 real_irrep = real_irrep.real
             else:  # complex or quaternionic irrep
+                d = real_irrep.shape[-1]
+                if verbose:
+                    print(f'Complex irrep {complex_name} -> real irrep {d}d-{d_count[d]}')
                 real_irrep = t.concat(
                     [
                         t.concat([irrep.real, -irrep.imag], dim=2),
