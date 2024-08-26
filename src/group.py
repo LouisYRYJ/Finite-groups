@@ -414,7 +414,7 @@ class Group:
             return t.round(ret).int().item()
 
     @lru_cache(maxsize=None)
-    def get_real_irreps(self, max_tries=100, verbose=False):
+    def get_real_irreps(self, max_tries=100, verbose=True):
         real_irreps = dict()
         d_count = defaultdict(lambda: 0)
         for complex_name, irrep in self.get_complex_irreps().items():
@@ -447,9 +447,6 @@ class Group:
                 ), "Real irrep transformation failed!"
                 real_irrep = real_irrep.real
             else:  # complex or quaternionic irrep
-                d = real_irrep.shape[-1]
-                if verbose:
-                    print(f'Complex irrep {complex_name} -> real irrep {d}d-{d_count[d]}')
                 real_irrep = t.concat(
                     [
                         t.concat([irrep.real, -irrep.imag], dim=2),
@@ -457,6 +454,9 @@ class Group:
                     ],
                     dim=1,
                 )
+                d = real_irrep.shape[-1]
+                if verbose:
+                    print(f'Complex irrep {complex_name} -> real irrep {d}d-{d_count[d]}')
             d = real_irrep.shape[-1]
             real_irreps[f"{d}d-{d_count[d]}"] = real_irrep
             d_count[d] += 1
@@ -469,8 +469,8 @@ class Group:
         return True
 
     # for convenience
-    def get_irreps(self, real=False):
-        return self.get_real_irreps() if real else self.get_complex_irreps()
+    def get_irreps(self, real=False, verbose=True):
+        return self.get_real_irreps(verbose=verbose) if real else self.get_complex_irreps()
 
     @lru_cache(maxsize=None)
     def gap_describe(self) -> str:

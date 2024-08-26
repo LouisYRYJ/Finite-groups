@@ -45,7 +45,7 @@ def load_models(path, sel=None):
     itr = model_paths if len(model_paths) < 5 else tqdm(model_paths)
     for model_path in itr:
         model = MODEL_DICT[params.model](params=params)
-        model.load_state_dict(t.load(model_path))
+        model.load_state_dict(t.load(model_path, map_location=device))
         models.append(model)
     return models, params
 
@@ -54,5 +54,5 @@ def load_models_itr(path, sel=None):
     N = len(string_to_groups(params.group_string)[0])
     for model_path in model_paths:
         model = MODEL_DICT[params.model](params=params)
-        model.load_state_dict(t.load(model_path))
+        model.load_state_dict(t.load(model_path, map_location=device))
         yield model
