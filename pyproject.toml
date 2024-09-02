@@ -21,6 +21,9 @@ scikit-learn = "^1.5.1"
 gappy-system = "^0.1.0a3"
 seaborn = "^0.13.2"
 huggingface-hub = "^0.24.6"
+gurobipy = "^11.0.3"
+cvxpy = "^1.5.3"
+cplex = "^22.1.1.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"
