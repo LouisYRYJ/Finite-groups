@@ -50,6 +50,7 @@ class Parameters:
     delta_frac: Union[float, list[float]] = 0.0
     train_frac: float = 1.0
     save_weights: bool = False
+    save_losses: bool = False
     load_weights: str = ""
     wandb: bool = False
     thresh_grok: float = 0.95
@@ -163,7 +164,8 @@ def train(model, group_dataset, params):
                         model.state_dict(),
                         directory_path + f"/ckpts/{epoch:06d}.pt",
                     )
-                t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
+                if params.save_losses:
+                    t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
 
         epoch_train_loss.zero_()
         epoch_train_acc.zero_()
