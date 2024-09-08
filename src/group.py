@@ -447,6 +447,8 @@ class Group:
                 ), "Real irrep transformation failed!"
                 real_irrep = real_irrep.real
             else:  # complex or quaternionic irrep
+                # TODO: in the complex case, there's overcounting due to the conjugate complex irrep
+                # being isomorphic over R. Need to check for this, and not add to real_irreps if so.
                 real_irrep = t.concat(
                     [
                         t.concat([irrep.real, -irrep.imag], dim=2),
