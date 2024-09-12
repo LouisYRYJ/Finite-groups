@@ -1,6 +1,7 @@
 # Any util functions that import from models.py should be defined here, not in utils.py
 from utils import *
 from model import *
+import copy
 
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
@@ -56,3 +57,27 @@ def load_models_itr(path, sel=None):
         model = MODEL_DICT[params.model](params=params)
         model.load_state_dict(t.load(model_path, map_location=device))
         yield model
+
+def dl_model(name, model_dir=os.getcwd() + '/models'):
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    model_dir = model_dir + '/' + name
+    if not os.path.exists(model_dir):
+        from huggingface_hub import snapshot_download
+        snapshot_download(repo_id=f'wiwu2390/{name}', local_dir=model_dir)
+    return load_models(model_dir)
+
+def ablate_loss(model, data, ln, rn, un):
+    ablate_model = copy.deepcopy(model)
+    ablate_model.linear.data = t.eye(ln.shape[1]).unsqueeze(0)
+    ablate_model.embedding_left.data = ln.unsqueeze(0)
+    ablate_model.embedding_right.data = rn.unsqueeze(0)
+    ablate_model.unembedding.data = un.unsqueeze(0).mT
+    return test_loss(ablate_model.to(device), data)
+
+def ablate_idx_loss(model, idxs):
+    ln, rn= model.get_neurons()
+    un = model.unembedding.data.detach()
+    ln, rn, un = ln.squeeze(0).to('cpu'), rn.squeeze(0).to('cpu'), un.squeeze(0).to('cpu').T
+    ln, rn, un = ln[:, idxs], rn[:, idxs], un[:, idxs]
+    return ablate_loss(ln, rn, un)

@@ -260,6 +260,8 @@ class Group:
         """
         Return set of all subgroups of the group
         """
+        # Remove nondeterminacy in GAP
+        gap.Reset(gap.GlobalMersenneTwister, 777)
         if cache_dir is not None:
             os.makedirs(cache_dir, exist_ok=True)
             cache_path = f"{cache_dir}/{self.hash()}"
@@ -340,6 +342,8 @@ class Group:
         Returns dict {irrep_name: irrep_basis}, where irrep_basis is a [len(self), d, d] matrix for irreps of degree d.
         Guaranteed to return unitary irreps.
         """
+        # Remove nondeterminacy in GAP
+        gap.Reset(gap.GlobalMersenneTwister, 777)
         if self.gap_repr is None:
             gap_group = self.to_gap_fp()
             to_idx = self.fp_elem_to_idx
