@@ -215,12 +215,12 @@ def irrep_report(irrep, group, irrep_lneurons, irrep_rneurons, irrep_uneurons, c
     l_in, r_in = inputs[..., 0], inputs[..., 1]
     l_onehot = F.one_hot(l_in, num_classes=N).float()
     r_onehot = F.one_hot(r_in, num_classes=N).float()
-    l_embed = einops.einsum(l_onehot, irrep_lneurons, 'batch group, group embed -> batch embed')
-    r_embed = einops.einsum(r_onehot, irrep_rneurons, 'batch group, group embed -> batch embed')
+    l_embed = einops.einsum(l_onehot, irrep_lneurons.to(device), 'batch group, group embed -> batch embed')
+    r_embed = einops.einsum(r_onehot, irrep_rneurons.to(device), 'batch group, group embed -> batch embed')
     pre_act = l_embed + r_embed
     act = t.maximum(t.zeros_like(pre_act), pre_act)
-    lin_logits = einops.einsum(pre_act, irrep_uneurons, 'batch hid, group hid-> batch group')
-    logits = einops.einsum(act, irrep_uneurons, 'batch hid, group hid-> batch group')
+    lin_logits = einops.einsum(pre_act, irrep_uneurons.to(device), 'batch hid, group hid-> batch group')
+    logits = einops.einsum(act, irrep_uneurons.to(device), 'batch hid, group hid-> batch group')
     print('output norm ratio', (lin_logits.norm() / logits.norm()).item())
             
 
