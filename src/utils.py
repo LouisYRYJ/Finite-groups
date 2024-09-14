@@ -65,7 +65,7 @@ def get_accuracy(
 @jaxtyped(typechecker=beartype)
 def get_cross_entropy(
     logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"],
-) -> Float[t.Tensor, "instance"]:
+) -> Any:#Float[t.Tensor, "instance"]:
     """
     Compute instance-wise cross entropy loss of model.
     (Need to rearrange batch and instance to match the expected shape of F.cross_entropy)
@@ -73,7 +73,7 @@ def get_cross_entropy(
     instances = logits.shape[1]
     labels = einops.repeat(labels, "batch -> batch n", n=instances)
     logits = einops.rearrange(logits, "batch instance vocab -> batch vocab instance")
-    return F.cross_entropy(logits, labels, reduction="none").mean(dim=0)
+    return F.cross_entropy(logits, labels, reduction="none").mean(dim=0), F.cross_entropy(logits, labels, reduction="none").std(dim=0)
 
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
@@ -117,11 +117,12 @@ def test_loss(
     loss_dict = dict()
     for i, group in enumerate(group_dataset.groups):
         labels = einops.rearrange(group.cayley_table, "a b -> (a b)").to(device)
-        loss = get_cross_entropy(logits, labels)
+        loss, loss_std = get_cross_entropy(logits, labels)
         accuracy = get_accuracy(logits, labels)
         # Don't add group name to wandb logs; it makes plot searching less convenient
         # Instead store group names in wandb config (in train.py)
         loss_dict[f"G{i}_loss"] = loss
+        loss_dict[f"G{i}_loss_std"] = loss_std
         loss_dict[f"G{i}_acc"] = accuracy
         # loss_dict[f"G{i}_loss_{group.name}"] = loss
         # loss_dict[f"G{i}_acc_{group.name}"] = accuracy

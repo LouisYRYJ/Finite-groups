@@ -277,7 +277,7 @@ class MLP2(InstancedModule):
             self.linear_right,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        return neurons_left, neurons_right
+        return neurons_left, neurons_right, self.unembedding.detach().mT
 
 class MLP3(InstancedModule):
     '''
@@ -363,7 +363,19 @@ class MLP3(InstancedModule):
             self.linear,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        return neurons_left, neurons_right
+        return neurons_left, neurons_right, self.unembedding.detach().mT
+
+    @t.no_grad()
+    def fold_linear(self):
+        lneurons, rneurons, _ = self.get_neurons()
+        ret = MLP4(self.params)
+        ret.embedding_left = nn.Parameter(lneurons)
+        ret.embedding_right = nn.Parameter(rneurons)
+        ret.unembedding = nn.Parameter(self.unembedding)
+        # ret.linear = nn.Parameter(
+        #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
+        # )
+        return ret
 
 
 class MLP4(InstancedModule):
@@ -431,7 +443,7 @@ class MLP4(InstancedModule):
         '''
         Left and right pre-activation neuron weights
         '''
-        return self.embedding_left.detach(), self.embedding_right.detach()
+        return self.embedding_left.detach(), self.embedding_right.detach(), self.unembedding.detach().mT
 
 
 class Normal(InstancedModule):

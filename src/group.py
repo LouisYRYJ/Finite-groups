@@ -510,6 +510,17 @@ class Group:
         return True
 
     @lru_cache(maxsize=None)
+    def is_subgroup_idx(self, h: set) -> bool:
+        """
+        Checks if h (given as set of idxs) is a subgroup of self.
+        """
+        for a, b in product(h, repeat=2):
+            # One-step subgroup test
+            if self.mult_idx(a, self.inv_idx(b)) not in h:
+                return False
+        return True
+
+    @lru_cache(maxsize=None)
     def is_subgroup(self, h: set) -> bool:
         """
         Checks if h (given as set of elements) is a subgroup of self.
@@ -574,7 +585,20 @@ class Group:
             else:
                 action = lambda x: self.mult_idx(x, i)
             cosets.add(frozenset(map(action, subgroup)))
-        return cosets
+        return list(cosets)
+
+    @lru_cache(maxsize=None)
+    def get_double_cosets_idx(self, subgroup1, subgroup2):
+        """
+        Returns double cosets of subgroup1 and subgroup2 in self
+        """
+        cosets = set()
+        for i in range(len(self)):
+            cosets.add(frozenset([
+                self.mult_idx(a, self.mult_idx(i, b))
+                for a, b in product(subgroup1, subgroup2)
+            ]))
+        return list(cosets)
 
     @lru_cache(maxsize=None)
     def get_classes(self):
