@@ -263,21 +263,26 @@ class MLP2(InstancedModule):
         return out
 
     @t.no_grad()
-    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
+    def get_neurons(self, squeeze=False) -> Float[t.Tensor, 'instances d_vocab hidden']:
         '''
         Left and right pre-activation neuron weights
         '''
-        neurons_left = einops.einsum(
+        lneurons = einops.einsum(
             self.embedding_left,
             self.linear_left,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        neurons_right = einops.einsum(
+        rneurons = einops.einsum(
             self.embedding_right,
             self.linear_right,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        return neurons_left, neurons_right, self.unembedding.detach().mT
+        uneurons = self.unembedding.detach().mT
+
+        if squeeze:
+            lneurons, rneurons, uneurons = lneurons.squeeze(0), rneurons.squeeze(0), uneurons.squeeze(0)
+            
+        return lneurons, rneurons, uneurons
 
 class MLP3(InstancedModule):
     '''
@@ -349,21 +354,24 @@ class MLP3(InstancedModule):
         return out
 
     @t.no_grad()
-    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab hidden']:
+    def get_neurons(self, squeeze=False) -> Float[t.Tensor, 'instances d_vocab hidden']:
         '''
         Left and right pre-activation neuron weights
         '''
-        neurons_left = einops.einsum(
+        lneurons= einops.einsum(
             self.embedding_left,
             self.linear,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        neurons_right = einops.einsum(
+        rneurons= einops.einsum(
             self.embedding_right,
             self.linear,
             'instances d_vocab embed_dim, instances embed_dim hidden -> instances d_vocab hidden'
         ).detach()
-        return neurons_left, neurons_right, self.unembedding.detach().mT
+        uneurons = self.unembedding.detach().mT
+        if squeeze:
+            lneurons, rneurons, uneurons = lneurons.squeeze(0), rneurons.squeeze(0), uneurons.squeeze(0)
+        return lneurons, rneurons, uneurons
 
     @t.no_grad()
     def fold_linear(self):
@@ -439,11 +447,16 @@ class MLP4(InstancedModule):
         return out
 
     @t.no_grad()
-    def get_neurons(self) -> Float[t.Tensor, 'instances d_vocab embed_dim']:
+    def get_neurons(self, squeeze=False) -> Float[t.Tensor, 'instances d_vocab embed_dim']:
         '''
         Left and right pre-activation neuron weights
         '''
-        return self.embedding_left.detach(), self.embedding_right.detach(), self.unembedding.detach().mT
+        lneurons = self.embedding_left.detach()
+        rneurons = self.embedding_right.detach()
+        uneurons = self.unembedding.detach().mT
+        if squeeze:
+            lneurons, rneurons, uneurons = lneurons.squeeze(0), rneurons.squeeze(0), uneurons.squeeze(0)
+        return lneurons, rneurons, uneurons
 
 
 class Normal(InstancedModule):
