@@ -284,6 +284,17 @@ class MLP2(InstancedModule):
             
         return lneurons, rneurons, uneurons
 
+    def fold_linear(self):
+        lneurons, rneurons, _ = self.get_neurons()
+        ret = MLP4(self.params)
+        ret.embedding_left = nn.Parameter(lneurons)
+        ret.embedding_right = nn.Parameter(rneurons)
+        ret.unembedding = nn.Parameter(self.unembedding)
+        # ret.linear = nn.Parameter(
+        #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
+        # )
+        return ret
+
 class MLP3(InstancedModule):
     '''
     This architecture isn't used by any existing work. Our own invention :)

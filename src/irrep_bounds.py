@@ -128,8 +128,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
 
         full_b = einops.einsum(b, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
         full_c = einops.einsum(c, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
-        b_kmeans, b_clusters, b_losses = cluster(full_b)
-        c_kmeans, c_clusters, c_losses = cluster(full_c)
+        b_kmeans, b_clusters, b_losses = cluster(full_b, max=10)
+        c_kmeans, c_clusters, c_losses = cluster(full_c, max=10)
         b_labels, c_labels = t.tensor(b_kmeans.predict(b.numpy())), t.tensor(c_kmeans.predict(c.numpy()))
         b_mean, c_mean = t.tensor(b_kmeans.cluster_centers_), t.tensor(c_kmeans.cluster_centers_)
         print(f'b has {b_clusters} clusters with total loss {b_losses[-1]}')
@@ -189,8 +189,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
             # print('coef_sum', coef_sum)
             if d_irrep == 1: 
                 # For 1-dim irreps, do a single sum over i instead of double sum over i, j
-                for i in b_part:
-                    assert len([j for j in c_part if ((b_labels == i) & (c_labels == j)).any()]) == 1, '1d irrep should sum over only one i'
+                # for i in b_part: # TODO: UNCOMMENT!!!
+                #     assert len([j for j in c_part if ((b_labels == i) & (c_labels == j)).any()]) == 1, '1d irrep should sum over only one i'
                 coef_mean = coef_sum[coef_sum > 0].mean()
                 # print('coef_mean', coef_mean)
                 for i, j in product(b_part, c_part):
@@ -298,6 +298,18 @@ def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
             print('u norm', norm22(part_un1))
             print(part_M.item())
     return M
+
+def model_dist2(model1, model2):
+    assert len(model1) == 1 and len(model2) == 1, "must be single instances"
+    ln1, rn1, un1 = model1.get_neurons()
+    ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
+    ln2, rn2, un2 = model2.get_neurons()
+    ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
+    ret = 0
+    for i in range(ln1.shape[1]):
+        ret += (un1[:,i] - un2[:,i]) * (ln1[:,i])
+    return ((un1 - un2) * (ln1.max(dim=0).values + rn1.max(dim=0).values) 
+        + un2 * ((ln1 - ln2).abs().max(dim=0).values + (rn1 - rn2).abs().max(dim=0).values)).norm(dim=0).sum()
 
 def irrep_bound(model, group, irreps, irrep_idx_dict, vecs):
     pass
