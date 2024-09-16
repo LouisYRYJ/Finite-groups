@@ -35,6 +35,12 @@ def model_dist(model1, model2):
     ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
     norm21 = lambda A: A.norm(dim=0).max()
     norm22 = lambda A: t.linalg.matrix_norm(A, ord=2)
+    print('l diff', norm21(ln1 - ln2))
+    print('r diff', norm21(rn1 - rn2))
+    print('u diff', norm22(un1 - un2))
+    print('l norm', norm21(ln1))
+    print('r norm', norm21(rn1))
+    print('u norm', norm22(un1))
     return norm22(un1) * (norm21(ln1 - ln2) + norm21(rn1 - rn2)) + norm22(un2 - un1) * (norm21(ln2) + norm21(rn2))
 
 def part_var(x, part, dim):
