@@ -73,6 +73,7 @@ def custom_kaiming(dims, unembed=False):
 
 def custom_kaiming_uniform(dims, scale=1., unembed=False):
     # Assumes shape [..., fan_in, fan_out]
+    # unembed=True scales norm by 1/fan_in^2, following tensor programs V
     params = t.empty(dims)
     if unembed:
         bound = 1. / float(dims[-2]) * scale
@@ -204,7 +205,7 @@ class MLP2(InstancedModule):
         )
 
         self.unembedding = init_func(
-            [params.instances, params.hidden_size, self.N], unembed=True
+            [params.instances, params.hidden_size, self.N], #unembed=True
         )
 
         if params.unembed_bias:
@@ -328,7 +329,7 @@ class MLP3(InstancedModule):
         )
 
         self.unembedding = init_func(
-            [params.instances, params.hidden_size, self.N], unembed=True
+            [params.instances, params.hidden_size, self.N], #unembed=True
         )
 
         self.activation = ACTS[params.activation]
@@ -425,7 +426,7 @@ class MLP4(InstancedModule):
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.unembedding = init_func([params.instances, params.embed_dim, self.N], unembed=True)
+        self.unembedding = init_func([params.instances, params.embed_dim, self.N],) #unembed=True)
         self.activation = ACTS[params.activation]
 
 

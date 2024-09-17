@@ -103,25 +103,26 @@ def train(model, group_dataset, params):
 
     if params.optimizer == "sgd":
         optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
-    unembed_params = {
-        'params': [p for name, p in model.named_parameters() if 'unembed' in name],
-        'lr': params.lr / params.hidden_size,
-    }
-    other_params = {
-        'params': [p for name, p in model.named_parameters() if 'unembed' not in name],
-        'lr': params.lr,
-    }
+    # lower learning rate for unembed, following tensor programs V
+    # unembed_params = {
+    #     'params': [p for name, p in model.named_parameters() if 'unembed' in name],
+    #     'lr': params.lr / params.hidden_size,
+    # }
+    # other_params = {
+    #     'params': [p for name, p in model.named_parameters() if 'unembed' not in name],
+    #     'lr': params.lr,
+    # }
     if params.optimizer == "adam":
         optimizer = t.optim.Adam(
-            # model.parameters(),
-            [other_params, unembed_params],
+            model.parameters(),
+            # [other_params, unembed_params],
             weight_decay=params.weight_decay,
             lr=params.lr,
-            # betas=[params.beta1, params.beta2],
+            betas=[params.beta1, params.beta2],
         )
     if params.optimizer == "adamw":
         optimizer = t.optim.AdamW(
-            [other_params, unembed_params],
+            # [other_params, unembed_params],
             model.parameters(),
             weight_decay=params.weight_decay,
             lr=params.lr,
