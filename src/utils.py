@@ -186,7 +186,7 @@ def cluster(vecs, num_seeds=30, thresh=1, max=1000):
             break
         if n_clusters >= max:
             break
-        # print(n_clusters, losses[-1])
+        print(n_clusters, losses[-1])
     return kmeans, n_clusters, losses
 
 def make_fourier_basis(group_order):

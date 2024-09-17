@@ -28,8 +28,9 @@ def load_model_paths(path, sel=None):
         params = Parameters(**json.loads(json_str))
 
     for root, dirs, files in os.walk(path + "/ckpts"):
-        for filename in sorted(files, key=get_number_from_filename)[1:]:
-            model_paths.append(os.path.join(root, filename))
+        for filename in sorted(files, key=get_number_from_filename):
+            if 'final' not in filename:
+                model_paths.append(os.path.join(root, filename))
 
     if (isinstance(sel, str) and sel.lower() == 'final') or len(model_paths) == 0:
         model_paths = [os.path.join(root, 'final.pt')]

@@ -128,9 +128,10 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
 
         full_b = einops.einsum(b, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
         full_c = einops.einsum(c, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
-        b_kmeans, b_clusters, b_losses = cluster(full_b, max=d_irrep*2+2)
-        c_kmeans, c_clusters, c_losses = cluster(full_c, max=d_irrep*2+2)
+        b_kmeans, b_clusters, b_losses = cluster(full_b,) #max=d_irrep*2+2)
+        c_kmeans, c_clusters, c_losses = cluster(full_c,) #max=d_irrep*2+2)
         b_labels, c_labels = t.tensor(b_kmeans.predict(b.numpy())), t.tensor(c_kmeans.predict(c.numpy()))
+        full_b_labels, full_c_labels = t.tensor(b_kmeans.predict(full_b.numpy())), t.tensor(c_kmeans.predict(full_c.numpy()))
         b_mean, c_mean = t.tensor(b_kmeans.cluster_centers_), t.tensor(c_kmeans.cluster_centers_)
         print(f'b has {b_clusters} clusters with total loss {b_losses[-1]}')
         print(f'c has {c_clusters} clusters with total loss {c_losses[-1]}')
@@ -147,7 +148,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
             b_part |= set(orbit_labels.tolist())
             b_parts.append(b_part)
             b_remain -= b_part
-            c_parts.append(set(c_labels[t.isin(b_labels, t.tensor(list(b_part)))].tolist()))
+            c_parts.append(set(full_c_labels[t.isin(full_b_labels, t.tensor(list(b_part)))].tolist()))
         b_parts = list(map(list, b_parts))
         c_parts = list(map(list, c_parts))
         print('b_parts', b_parts)

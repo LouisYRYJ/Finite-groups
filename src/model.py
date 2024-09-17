@@ -59,19 +59,25 @@ class MLP(nn.Module):
 #         return out
 
 
-def custom_xavier(dims):
+def custom_xavier(dims, unembed=False):
     # Assumes shape [..., fan_in, fan_out]
     return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2] + dims[-1])))
 
 
-def custom_kaiming(dims):
+def custom_kaiming(dims, unembed=False):
     # Assumes shape [..., fan_in, fan_out]
-    return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2])))
+    if unembed:
+        nn.Parameter(t.randn(dims) * np.sqrt(2.0) / float(dims[-2]))
+    else:
+        return nn.Parameter(t.randn(dims) * np.sqrt(2.0 / float(dims[-2])))
 
-def custom_kaiming_uniform(dims, scale=1.):
+def custom_kaiming_uniform(dims, scale=1., unembed=False):
     # Assumes shape [..., fan_in, fan_out]
     params = t.empty(dims)
-    bound = np.sqrt(1. / float(dims[-2])) * scale
+    if unembed:
+        bound = 1. / float(dims[-2]) * scale
+    else:
+        bound = np.sqrt(1. / float(dims[-2])) * scale
     params.uniform_(-bound, bound)
     return nn.Parameter(params)
 
@@ -198,7 +204,7 @@ class MLP2(InstancedModule):
         )
 
         self.unembedding = init_func(
-            [params.instances, params.hidden_size, self.N]
+            [params.instances, params.hidden_size, self.N], unembed=True
         )
 
         if params.unembed_bias:
@@ -322,7 +328,7 @@ class MLP3(InstancedModule):
         )
 
         self.unembedding = init_func(
-            [params.instances, params.hidden_size, self.N]
+            [params.instances, params.hidden_size, self.N], unembed=True
         )
 
         self.activation = ACTS[params.activation]
@@ -419,7 +425,7 @@ class MLP4(InstancedModule):
             [params.instances, self.N, params.embed_dim]
         )
 
-        self.unembedding = init_func([params.instances, params.embed_dim, self.N])
+        self.unembedding = init_func([params.instances, params.embed_dim, self.N], unembed=True)
         self.activation = ACTS[params.activation]
 
 
