@@ -114,14 +114,14 @@ def train(model, group_dataset, params):
     if params.optimizer == "adam":
         optimizer = t.optim.Adam(
             # model.parameters(),
-            other_params, unembed_params,
+            [other_params, unembed_params],
             weight_decay=params.weight_decay,
             lr=params.lr,
             # betas=[params.beta1, params.beta2],
         )
     if params.optimizer == "adamw":
         optimizer = t.optim.AdamW(
-            other_params, unembed_params,
+            [other_params, unembed_params],
             model.parameters(),
             weight_decay=params.weight_decay,
             lr=params.lr,
