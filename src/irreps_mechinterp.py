@@ -29,7 +29,8 @@ import sys, os, re
 import argparse
 
 A_VAR = []
-ABLATE_DIFF = []
+LOSS = []
+NORM = []
 
 def irrep_report(irrep, group, irrep_lneurons, irrep_rneurons, irrep_uneurons, clusters=1000):
     irrep_frobschur = np.sign(group.get_frobenius_schur(irrep)).item()
@@ -232,12 +233,12 @@ def irreps_report(model, params, irrep_filter=None, acc_thresh=0.999, loss_thres
     for i in range(len(all_models)):
         if loss_dict['G0_loss'][i] > loss_thresh or loss_dict['G0_acc'][i] < acc_thresh:
             continue
-        print('MODEL INSTANCE', i)
         model = all_models[i].to(device)
+        print('MODEL INSTANCE', i)
+        print('Loss:', loss_dict['G0_loss'][i].item())
+        print('Norm:', (model.embedding_left.norm() + model.embedding_right.norm() + model.unembedding.norm() + model.linear.norm()).item())
         
-        lneurons, rneurons = model.get_neurons()
-        uneurons = model.unembedding.data.detach()
-        lneurons, rneurons, uneurons = lneurons.squeeze(0).to('cpu'), rneurons.squeeze(0).to('cpu'), uneurons.squeeze(0).to('cpu').T
+        lneurons, rneurons, uneurons = model.get_neurons(squeeze=True)
         irreps = group.get_real_irreps(verbose=True)
 
         irrep_bases = dict()
@@ -275,11 +276,15 @@ def irreps_report(model, params, irrep_filter=None, acc_thresh=0.999, loss_thres
                 continue
 
             print(f'Irrep {k} has {len(irrep_idxs)} neurons')
+            LOSS.append(loss_dict['G0_loss'][i].item())
+            NORM.append((model.embedding_left.norm() + model.embedding_right.norm() + model.unembedding.norm() + model.linear.norm()).item())
 
             irrep_lneurons = lneurons[:, irrep_idxs]
             irrep_rneurons = rneurons[:, irrep_idxs]
             irrep_uneurons = uneurons[:, irrep_idxs]
             irrep_report(irreps[k], group, irrep_lneurons, irrep_rneurons, irrep_uneurons, clusters=clusters)
+        print('A_VAR', len(A_VAR))
+        print('LOSS', len(LOSS))
         print('--------------------\n\n')
     
 
@@ -293,3 +298,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     models, params = dl_model(args.model_name, os.getenv('HOME') + '/models')
     irreps_report(models[-1], params, irrep_filter=args.filter, acc_thresh=args.acc_thresh, loss_thresh=args.loss_thresh, clusters=args.clusters)
+    plt.scatter(A_VAR, LOSS)
+    plt.xscale('log')
+    plt.xlabel('a variance')
+    plt.ylabel('loss')
+    plt.show()
+    plt.scatter(A_VAR, NORM)
+    plt.xscale('log')
+    plt.xlabel('a variance')
+    plt.ylabel('weight norm')
+    plt.show()

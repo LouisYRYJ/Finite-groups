@@ -128,8 +128,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
 
         full_b = einops.einsum(b, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
         full_c = einops.einsum(c, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
-        b_kmeans, b_clusters, b_losses = cluster(full_b, max=10)
-        c_kmeans, c_clusters, c_losses = cluster(full_c, max=10)
+        b_kmeans, b_clusters, b_losses = cluster(full_b, max=d_irrep*2+2)
+        c_kmeans, c_clusters, c_losses = cluster(full_c, max=d_irrep*2+2)
         b_labels, c_labels = t.tensor(b_kmeans.predict(b.numpy())), t.tensor(c_kmeans.predict(c.numpy()))
         b_mean, c_mean = t.tensor(b_kmeans.cluster_centers_), t.tensor(c_kmeans.cluster_centers_)
         print(f'b has {b_clusters} clusters with total loss {b_losses[-1]}')
@@ -181,26 +181,27 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
         print('c_mean', c_mean)
 
         unif_coef = t.zeros_like(coef)
-        for b_part, c_part in zip(b_parts, c_parts):
-            coef_sum = t.tensor([
-                coef[(b_labels == i) & (c_labels == j)].sum().item()
-                for i, j in product(b_part, c_part)
-            ])
-            # print('coef_sum', coef_sum)
-            if d_irrep == 1: 
-                # For 1-dim irreps, do a single sum over i instead of double sum over i, j
-                # for i in b_part: # TODO: UNCOMMENT!!!
-                #     assert len([j for j in c_part if ((b_labels == i) & (c_labels == j)).any()]) == 1, '1d irrep should sum over only one i'
-                coef_mean = coef_sum[coef_sum > 0].mean()
-                # print('coef_mean', coef_mean)
-                for i, j in product(b_part, c_part):
-                    ij_mask = (b_labels == i) & (c_labels == j)
-                    if not ij_mask.any():
-                        continue
-                    ij_sum = coef[ij_mask].sum()
-                    unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
-            else:
+        if d_irrep == 1:
+            # Hardcoded for sign irrep. TODO: Support for general complex 1d irreps
+            # Normalize st sum over (0,0) and (1,1) is the same
+            # and st sum over (0,1) and (1,0) is the same
+            mask00 = (b_labels == 0) & (c_labels == 0)
+            mask01 = (b_labels == 0) & (c_labels == 1)
+            mask10 = (b_labels == 1) & (c_labels == 0)
+            mask11 = (b_labels == 1) & (c_labels == 1)
+            mean1 = (coef[mask00].sum() + coef[mask11].sum()) / 2
+            mean2 = (coef[mask01].sum() + coef[mask10].sum()) / 2
+            unif_coef[mask00] = coef[mask00] * mean1 / coef[mask00].sum()
+            unif_coef[mask11] = coef[mask11] * mean1 / coef[mask11].sum()
+            unif_coef[mask01] = coef[mask01] * mean2 / coef[mask01].sum()
+            unif_coef[mask10] = coef[mask10] * mean2 / coef[mask10].sum()
+        else:
+            for b_part, c_part in zip(b_parts, c_parts):
                 # Rescale such that sum of coefs over each (i, j) pair is the same
+                coef_sum = t.tensor([
+                    coef[(b_labels == i) & (c_labels == j)].sum().item()
+                    for i, j in product(b_part, c_part)
+                ])
                 coef_mean = coef_sum.mean()
                 for i, j in product(b_part, c_part):
                     ij_mask = (b_labels == i) & (c_labels == j)
@@ -217,9 +218,9 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
                     # print('ij_sum', ij_sum)
                     unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
         print('b_labels', b_labels)
-        print('c_labels', b_labels)
-        print('coef', coef[:5])
-        print('unif_coef', unif_coef[:5])
+        print('c_labels', c_labels)
+        print('coef', coef)
+        print('unif_coef', unif_coef)
         print('coef diff', (coef - unif_coef).norm()**2 / coef.norm()**2)
         
         vecs[irrep_name] = (unif_coef, (A_norm + B_norm) / 2, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts)
@@ -299,7 +300,7 @@ def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
             print(part_M.item())
     return M
 
-def model_dist2(model1, model2):
+def model_dist_inf(model1, model2):
     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
     ln1, rn1, un1 = model1.get_neurons()
     ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
@@ -309,7 +310,7 @@ def model_dist2(model1, model2):
     for i in range(ln1.shape[1]):
         ret += (un1[:,i] - un2[:,i]) * (ln1[:,i])
     return ((un1 - un2) * (ln1.max(dim=0).values + rn1.max(dim=0).values) 
-        + un2 * ((ln1 - ln2).abs().max(dim=0).values + (rn1 - rn2).abs().max(dim=0).values)).norm(dim=0).sum()
+        + un2 * ((ln1 - ln2).abs().max(dim=0).values + (rn1 - rn2).abs().max(dim=0).values)).abs().sum(dim=1).max()
 
 def irrep_bound(model, group, irreps, irrep_idx_dict, vecs):
     pass
