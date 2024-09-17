@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 import torch as t
 import os
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, RandomSampler
 from tqdm import tqdm
 import random
 from model import MODEL_DICT
@@ -58,7 +57,7 @@ class Parameters:
     model: str = "MLP3"
     unembed_bias: bool = False
     init_func: str = "kaiming_uniform"
-    correct_embed: bool = False
+    # correct_embed: bool = False
 
 
 def train(model, group_dataset, params):
@@ -92,12 +91,15 @@ def train(model, group_dataset, params):
     else:
         batch_size = params.batch_size
 
+    sampler = RandomSampler(group_dataset, replacement=True)
     train_loader = DataLoader(
         dataset=group_dataset,
         batch_size=batch_size,
-        shuffle=True,
-        drop_last=False,
+        # shuffle=True,
+        drop_last=True,
+        sampler=sampler,
     )
+
 
     if params.optimizer == "sgd":
         optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
