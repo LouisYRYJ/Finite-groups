@@ -106,24 +106,35 @@ def train(model, group_dataset, params):
     # lower learning rate for unembed, following tensor programs V
     # unembed_params = {
     #     'params': [p for name, p in model.named_parameters() if 'unembed' in name],
-    #     'lr': params.lr / params.hidden_size,
+    #     # 'lr': params.lr / params.hidden_size,
+    #     'weight_decay': params.weight_decay,
     # }
     # other_params = {
     #     'params': [p for name, p in model.named_parameters() if 'unembed' not in name],
-    #     'lr': params.lr,
+    #     # 'lr': params.lr,
+    #     'weight_decay': params.weight_decay * 0.,
     # }
+    # bias shouldn't have weight decay
+    bias_params = {
+        'params': [p for name, p in model.named_parameters() if 'bias' in name],
+        'weight_decay': 0.,
+    }
+    weight_params = {
+        'params': [p for name, p in model.named_parameters() if 'bias' not in name],
+        'weight_decay': params.weight_decay,
+    }
     if params.optimizer == "adam":
         optimizer = t.optim.Adam(
-            model.parameters(),
-            # [other_params, unembed_params],
-            weight_decay=params.weight_decay,
+            # model.parameters(),
+            [bias_params, weight_params],
+            # weight_decay=params.weight_decay,
             lr=params.lr,
             betas=[params.beta1, params.beta2],
         )
     if params.optimizer == "adamw":
         optimizer = t.optim.AdamW(
-            # [other_params, unembed_params],
-            model.parameters(),
+            [bias_params, weight_params],
+            # model.parameters(),
             weight_decay=params.weight_decay,
             lr=params.lr,
             betas=[params.beta1, params.beta2],
