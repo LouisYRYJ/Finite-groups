@@ -29,11 +29,9 @@ import argparse
 
 def model_dist(model1, model2):
     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
-    ln1, rn1, un1 = model1.get_neurons()
-    ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
-    ln2, rn2, un2 = model2.get_neurons()
-    ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
-    norm21 = lambda A: A.norm(dim=0).max()
+    ln1, rn1, un1 = model1.get_neurons(squeeze=True)
+    ln2, rn2, un2 = model2.get_neurons(squeeze=True)
+    norm21 = lambda A: A.norm(dim=1).max()  # max 2-norm along neuron dimension
     norm22 = lambda A: t.linalg.matrix_norm(A, ord=2)
     print('l diff', norm21(ln1 - ln2))
     print('r diff', norm21(rn1 - rn2))
