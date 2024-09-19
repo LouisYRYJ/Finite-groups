@@ -360,7 +360,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
     out = ideal(t.tensor([[id, id]])).flatten()
     id_out = out[id].item()
     out[id] = -t.inf
-    margin = id_out - out[id].max().item()
+    margin = id_out - out.max().item()
     if linear:
         err = model_dist(model, ideal, 'inf')
         acc = 1. if err < margin else 0.

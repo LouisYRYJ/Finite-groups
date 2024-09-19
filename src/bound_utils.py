@@ -58,18 +58,18 @@ def model_dist(model1, model2, p):
     norm_e = norm2inf
     norm_u = norm22 if p == 2 else norm2inf
     norm_b = (lambda b: b.norm()) if p == 2 else (lambda b: b.abs().max())
-    print('l diff', norm_e(ln1 - ln2))
-    print('r diff', norm_e(rn1 - rn2))
-    print('u diff', norm_u(un1 - un2))
-    print('l norm', norm_e(ln1))
-    print('r norm', norm_e(rn1))
-    print('u norm', norm_u(un1))
+    # print('l diff', norm_e(ln1 - ln2))
+    # print('r diff', norm_e(rn1 - rn2))
+    # print('u diff', norm_u(un1 - un2))
+    # print('l norm', norm_e(ln1))
+    # print('r norm', norm_e(rn1))
+    # print('u norm', norm_u(un1))
     u_diff = norm_u(un2 - un1) * (norm_e(ln2) + norm_e(rn2))
     e_diff = norm_u(un1) * (norm_e(ln1 - ln2) + norm_e(rn1 - rn2))
     bias_diff = norm_b(bias1 - bias2)
-    print('u diff term', u_diff)
-    print('e diff term', e_diff)
-    print('bias diff term', bias_diff)
+    # print('u diff term', u_diff)
+    # print('e diff term', e_diff)
+    # print('bias diff term', bias_diff)
     return u_diff + e_diff + bias_diff
 
 @t.no_grad()
