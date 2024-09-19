@@ -59,7 +59,7 @@ def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     }
     return irreps, irrep_idx_dict
 
-def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
+def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -155,28 +155,29 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict):
         print('c_parts', c_parts)
         print('a_mean', a.mean(dim=0))
 
-        # Check that irrep is G-action on each partition of b's clusters
-        for i, b_part in enumerate(b_parts):
-            T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
-            T = (T > 1 - 1e-2).int()
-            assert (T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all(), f'Rho is not permutation on partition {i} of b!!!!'
+        if strict:
+            # Check that irrep is G-action on each partition of b's clusters
+            for i, b_part in enumerate(b_parts):
+                T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
+                T = (T > 1 - 1e-2).int()
+                assert ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()), f'Rho is not permutation on partition {i} of b!!!!'
 
-        # Check that irrep is G-action on each partition of c's clusters
-        for i, c_part in enumerate(c_parts):
-            T = einops.einsum(c_mean[c_part], irrep, c_mean[c_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
-            T = (T > 1 - 1e-2).int()
-            assert (T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all(), f'Rho is not permutation on partition {i} of c!!!!'
+            # Check that irrep is G-action on each partition of c's clusters
+            for i, c_part in enumerate(c_parts):
+                T = einops.einsum(c_mean[c_part], irrep, c_mean[c_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
+                T = (T > 1 - 1e-2).int()
+                assert ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()), f'Rho is not permutation on partition {i} of c!!!!'
 
-        # Check that {b_i} = {-c_i} within each partition
-        for b_part, c_part in zip(b_parts, c_parts):
-            S = b_mean[b_part] @ -c_mean[c_part].T
-            S = (S > 1 - 1e-2).int()
-            assert (S.sum(axis=0) == 1).all() and (S.sum(axis=1) == 1).all(), print(f'(b_i) != (-c_i) within partition {b_part},{c_part}!!!!')
-            # replace c_j with corresponding -b_i
-            for j in range(len(c_part)):
-                i = S[:,j].tolist().index(1)
-                c_mean[c_part[j]] = -b_mean[b_part[i]]
-                print(f'replacing c_{c_part[j]} with -b_{b_part[i]}')
+            # Check that {b_i} = {-c_i} within each partition
+            for b_part, c_part in zip(b_parts, c_parts):
+                S = b_mean[b_part] @ -c_mean[c_part].T
+                S = (S > 1 - 1e-2).int()
+                assert ((S.sum(axis=0) == 1).all() and (S.sum(axis=1) == 1).all()), print(f'(b_i) != (-c_i) within partition {b_part},{c_part}!!!!')
+                # replace c_j with corresponding -b_i
+                for j in range(len(c_part)):
+                    i = S[:,j].tolist().index(1)
+                    c_mean[c_part[j]] = -b_mean[b_part[i]]
+                    print(f'replacing c_{c_part[j]} with -b_{b_part[i]}')
 
         print('b_mean', b_mean)
         print('c_mean', c_mean)
@@ -254,7 +255,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, vecs):
                 irrep_rn[:, i] /= ucoef
             else:
                 #un has been zeroed out
-                irrep_un[:, i] = 0#uneurons[:, irrep_idxs[i]]
+                irrep_un[:, i] = 0. # uneurons[:, irrep_idxs[i]]
                 irrep_ln[:, i] = lneurons[:, irrep_idxs[i]]
                 irrep_rn[:, i] = rneurons[:, irrep_idxs[i]]
         print('l diff', (irrep_ln - lneurons[:,irrep_idxs]).norm()**2 / lneurons[:,irrep_idxs].norm()**2)
@@ -302,17 +303,6 @@ def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
             print(part_M.item())
     return M
 
-def model_dist_inf(model1, model2):
-    assert len(model1) == 1 and len(model2) == 1, "must be single instances"
-    ln1, rn1, un1 = model1.get_neurons()
-    ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
-    ln2, rn2, un2 = model2.get_neurons()
-    ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
-    ret = 0
-    for i in range(ln1.shape[1]):
-        ret += (un1[:,i] - un2[:,i]) * (ln1[:,i])
-    return ((un1 - un2) * (ln1.max(dim=0).values + rn1.max(dim=0).values) 
-        + un2 * ((ln1 - ln2).abs().max(dim=0).values + (rn1 - rn2).abs().max(dim=0).values)).abs().sum(dim=1).max()
 
 def irrep_bound(model, group, irreps, irrep_idx_dict, vecs):
     pass

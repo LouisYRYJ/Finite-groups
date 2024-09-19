@@ -58,6 +58,7 @@ class Parameters:
     unembed_bias: bool = False
     init_func: str = "kaiming_uniform"
     correct_embed: bool = False
+    replacement: bool = False
 
 
 def train(model, group_dataset, params):
@@ -91,7 +92,7 @@ def train(model, group_dataset, params):
     else:
         batch_size = params.batch_size
 
-    sampler = RandomSampler(group_dataset, replacement=True)
+    sampler = RandomSampler(group_dataset, replacement=params.replacement)
     train_loader = DataLoader(
         dataset=group_dataset,
         batch_size=batch_size,

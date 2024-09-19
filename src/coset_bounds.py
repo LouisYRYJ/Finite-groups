@@ -27,6 +27,21 @@ from group_utils import *
 import sys, os, re
 import argparse
 
+def model_dist_res(model1, model2, proj):
+    assert len(model1) == 1 and len(model2) == 1, "must be single instances"
+    ln1, rn1, un1 = model1.get_neurons(squeeze=True)
+    ln2, rn2, un2 = model2.get_neurons(squeeze=True)
+    norm21 = lambda A: A.norm(dim=1).max()  # max 2-norm along neuron dimension
+    norm22 = lambda A: t.linalg.matrix_norm(A, ord=2)
+    print('l diff', norm21(ln1 - ln2))
+    print('r diff', norm21(rn1 - rn2))
+    print('u diff', norm22(un1 - un2))
+    print('u diff res', norm22(proj @ (un1 - un2)))
+    print('l norm', norm21(ln1))
+    print('r norm', norm21(rn1))
+    print('u norm', norm22(un1))
+    return norm22(un1) * (norm21(ln1 - ln2) + norm21(rn1 - rn2)) + norm22(proj @ (un2 - un1)) * (norm21(ln2) + norm21(rn2))
+
 def model_dist(model1, model2):
     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
     ln1, rn1, un1 = model1.get_neurons(squeeze=True)
@@ -39,6 +54,8 @@ def model_dist(model1, model2):
     print('l norm', norm21(ln1))
     print('r norm', norm21(rn1))
     print('u norm', norm22(un1))
+    print('u diff term', norm22(un2 - un1) * (norm21(ln2) + norm21(rn2)))
+    print('lr diff term', norm22(un1) * (norm21(ln1 - ln2) + norm21(rn1 - rn2)))
     return norm22(un1) * (norm21(ln1 - ln2) + norm21(rn1 - rn2)) + norm22(un2 - un1) * (norm21(ln2) + norm21(rn2))
 
 def part_var(x, part, dim):
