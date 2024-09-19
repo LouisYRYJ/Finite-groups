@@ -63,7 +63,7 @@ def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     }
     return irreps, irrep_idx_dict
 
-def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
+def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -71,7 +71,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
 
     vecs = dict()
     for irrep_name, irrep in irreps.items():
-        print(irrep_name)
+        if verbose:
+            print(irrep_name)
         if not irrep_idx_dict[irrep_name]:
             continue
         irrep_lneurons, irrep_rneurons, irrep_uneurons = lneurons[:,irrep_idx_dict[irrep_name]], rneurons[:,irrep_idx_dict[irrep_name]], uneurons[:,irrep_idx_dict[irrep_name]]
@@ -101,7 +102,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
         coef = (x.conj() * y).sum(dim=-1) / (x.conj() * x).sum(dim=-1)
         yhat = coef.unsqueeze(1) * x
         r2 = (yhat - y).norm(dim=-1).pow(2) / y.norm(dim=-1).pow(2)
-        print('1-r2 90th percentile', t.quantile(r2, 0.9).item())
+        if verbose:
+            print('1-r2 90th percentile', t.quantile(r2, 0.9).item())
 
         a, b, c, d = [], [], [], []
         for i in range(A.shape[0]):
@@ -125,10 +127,11 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
         c = t.diag(d_sign) @ c
         d = t.diag(d_sign) @ d
 
-        for vec_name, v in zip(['a', 'b', 'c', 'd'], [a, b, c, d]):
-            print(f'{vec_name} variance:', ((v - v.mean(dim=0)).norm()**2 / v.norm()**2).item())
+        if verbose:
+            for vec_name, v in zip(['a', 'b', 'c', 'd'], [a, b, c, d]):
+                print(f'{vec_name} variance:', ((v - v.mean(dim=0)).norm()**2 / v.norm()**2).item())
 
-        print('a vs d', (a - d).norm()**2 / a.norm()**2)
+            print('a vs d', (a - d).norm()**2 / a.norm()**2)
 
         full_b = einops.einsum(b, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
         full_c = einops.einsum(c, irrep, 'neuron d2, G d1 d2 -> neuron G d1').flatten(0, 1)
@@ -137,8 +140,9 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
         b_labels, c_labels = t.tensor(b_kmeans.predict(b.numpy())), t.tensor(c_kmeans.predict(c.numpy()))
         full_b_labels, full_c_labels = t.tensor(b_kmeans.predict(full_b.numpy())), t.tensor(c_kmeans.predict(full_c.numpy()))
         b_mean, c_mean = t.tensor(b_kmeans.cluster_centers_), t.tensor(c_kmeans.cluster_centers_)
-        print(f'b has {b_clusters} clusters with total loss {b_losses[-1]}')
-        print(f'c has {c_clusters} clusters with total loss {c_losses[-1]}')
+        if verbose:
+            print(f'b has {b_clusters} clusters with total loss {b_losses[-1]}')
+            print(f'c has {c_clusters} clusters with total loss {c_losses[-1]}')
 
         # partition clusters into rho-closed sets
         b_remain = set(range(b_clusters))
@@ -155,9 +159,10 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
             c_parts.append(set(full_c_labels[t.isin(full_b_labels, t.tensor(list(b_part)))].tolist()))
         b_parts = list(map(list, b_parts))
         c_parts = list(map(list, c_parts))
-        print('b_parts', b_parts)
-        print('c_parts', c_parts)
-        print('a_mean', a.mean(dim=0))
+        if verbose:
+            print('b_parts', b_parts)
+            print('c_parts', c_parts)
+            print('a_mean', a.mean(dim=0))
 
         if strict:
             # Check that irrep is G-action on each partition of b's clusters
@@ -181,16 +186,16 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
                 for j in range(len(c_part)):
                     i = S[:,j].tolist().index(1)
                     c_mean[c_part[j]] = -b_mean[b_part[i]]
-                    print(f'replacing c_{c_part[j]} with -b_{b_part[i]}')
-
-        print('b_mean', b_mean)
-        print('c_mean', c_mean)
-
+                    # print(f'replacing c_{c_part[j]} with -b_{b_part[i]}')
       
         # vecs[irrep_name] = (unif_coef, (A_norm + B_norm) / 2, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef)
         vecs[irrep_name] = (coef, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts)
-        print(vecs.keys())
-        print()
+
+        if verbose:
+            print('b_mean', b_mean)
+            print('c_mean', c_mean)
+            print()
+
     return vecs
 
 def get_unif_vecs(irreps, vecs):
@@ -229,10 +234,10 @@ def get_unif_vecs(irreps, vecs):
                 for i, j in product(b_part, c_part):
                     ij_mask = (b_labels == i) & (c_labels == j)
                     if not ij_mask.any():
-                        print(f'no neurons corresponding to ({i},{j}) pair! zeroing partition!')
+                        # print(f'no neurons corresponding to ({i},{j}) pair! zeroing partition!')
                         coef_mean = 0.
-                print(b_part, 'coef_sum', coef_sum)
-                print(b_part, 'coef_mean', coef_mean)
+                # print(b_part, 'coef_sum', coef_sum)
+                # print(b_part, 'coef_mean', coef_mean)
                 for i, j in product(b_part, c_part):
                     ij_mask = (b_labels == i) & (c_labels == j)
                     ij_sum = coef[ij_mask].sum()
@@ -251,9 +256,9 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
         model = model.fold_linear()
     lneurons, rneurons, uneurons = model.get_neurons(squeeze=True)
     new_ln, new_rn, new_un = t.zeros_like(lneurons), t.zeros_like(rneurons), t.zeros_like(uneurons)
-    new_bias = 0.
+    new_bias = t.zeros_like(model.unembed_bias.squeeze())
     for irrep_name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef) in unif_vecs.items():
-        print(irrep_name)
+        # print(irrep_name)
         irrep_idxs = irrep_idx_dict[irrep_name]
         b = b_mean[b_labels]
         c = c_mean[c_labels]
@@ -274,9 +279,9 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
                 irrep_un[:, i] = uneurons[:, irrep_idxs[i]]
                 irrep_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
                 irrep_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
-        print('l diff', (irrep_ln - lneurons[:,irrep_idxs]).norm()**2 / lneurons[:,irrep_idxs].norm()**2)
-        print('r diff', (irrep_rn - rneurons[:,irrep_idxs]).norm()**2 / rneurons[:,irrep_idxs].norm()**2)
-        print('u diff', (irrep_un - uneurons[:,irrep_idxs]).norm()**2 / uneurons[:,irrep_idxs].norm()**2)
+        # print('l diff', (irrep_ln - lneurons[:,irrep_idxs]).norm()**2 / lneurons[:,irrep_idxs].norm()**2)
+        # print('r diff', (irrep_rn - rneurons[:,irrep_idxs]).norm()**2 / rneurons[:,irrep_idxs].norm()**2)
+        # print('u diff', (irrep_un - uneurons[:,irrep_idxs]).norm()**2 / uneurons[:,irrep_idxs].norm()**2)
         new_ln[:,irrep_idxs] = irrep_ln
         new_rn[:,irrep_idxs] = irrep_rn
         new_un[:,irrep_idxs] = irrep_un
@@ -292,11 +297,11 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
                 new_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
                 new_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
 
-    print('total')
-    print('l 1-r2', (new_ln - lneurons).norm()**2 / lneurons.norm()**2)
-    print('r 1-r2', (new_rn - rneurons).norm()**2 / rneurons.norm()**2)
-    print('u 1-r2', (new_un - uneurons).norm()**2 / uneurons.norm()**2)
-    print('bias 1-r2', (new_bias - model.unembed_bias.squeeze()).norm()**2 / model.unembed_bias.squeeze().norm()**2)
+    # print('total')
+    # print('l 1-r2', (new_ln - lneurons).norm()**2 / lneurons.norm()**2)
+    # print('r 1-r2', (new_rn - rneurons).norm()**2 / rneurons.norm()**2)
+    # print('u 1-r2', (new_un - uneurons).norm()**2 / uneurons.norm()**2)
+    # print('bias 1-r2', (new_bias - model.unembed_bias.squeeze()).norm()**2 / model.unembed_bias.squeeze().norm()**2)
     ret = copy.deepcopy(model)
     ret.embedding_left = nn.Parameter(new_ln.unsqueeze(0))
     ret.embedding_right = nn.Parameter(new_rn.unsqueeze(0))
@@ -333,7 +338,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
 #     return M
 
 @t.no_grad()
-def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False):
+def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, linear=False):
     t0 = time.time()
     unif_vecs = get_unif_vecs(irreps, vecs)
     try:
@@ -350,14 +355,18 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False):
         margins.append((top2[0] - top2[1]).item())
     assert np.std(margins) < 1e-5, 'ideal model not equivariant'
     t2 = time.time()
-    errs = model_dist_xy(model, ideal, 'inf')
-    id = group.identity_idx()
     # ideal is equivaraint, so we can just check the margin of the identity
+    id = group.identity_idx()
     out = ideal(t.tensor([[id, id]])).flatten()
     id_out = out[id].item()
     out[id] = -t.inf
     margin = id_out - out[id].max().item()
-    acc = (t.tensor(errs) < margin).float().mean().item()
+    if linear:
+        err = model_dist(model, ideal, 'inf')
+        acc = 1. if err < margin else 0.
+    else:
+        errs = model_dist_xy(model, ideal, 'inf')
+        acc = (t.tensor(errs) < margin).float().mean().item()
     t3 = time.time()
     # check irreps
     for name, irrep in irreps.items():
