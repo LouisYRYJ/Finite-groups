@@ -297,6 +297,7 @@ class MLP2(InstancedModule):
         ret.embedding_left = nn.Parameter(lneurons)
         ret.embedding_right = nn.Parameter(rneurons)
         ret.unembedding = nn.Parameter(self.unembedding)
+        ret.unembed_bias = nn.Parameter(self.unembed_bias)
         # ret.linear = nn.Parameter(
         #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
         # )
@@ -334,6 +335,14 @@ class MLP3(InstancedModule):
 
         self.activation = ACTS[params.activation]
 
+        if params.unembed_bias:
+            bias = t.empty((params.instances, self.N))
+            bound = 1 / np.sqrt(params.hidden_size)    # 1 / sqrt(fan_in)
+            bias.uniform_(-bound, bound)
+            self.unembed_bias = nn.Parameter(bias)
+        else:
+            self.unembed_bias = None
+
     @jaxtyped(typechecker=beartype)
     def _forward(
         self, a: Int[t.Tensor, "batch_size entries"]
@@ -369,6 +378,13 @@ class MLP3(InstancedModule):
             self.unembedding,
             "batch_size instances hidden, instances hidden d_vocab-> batch_size instances d_vocab ",
         )
+
+        if self.unembed_bias is not None:
+            out += einops.repeat(
+                self.unembed_bias,
+                'instances d_vocab -> batch_size instances d_vocab',
+                batch_size=out.shape[0]
+            )
         return out
 
     @t.no_grad()
@@ -398,6 +414,7 @@ class MLP3(InstancedModule):
         ret.embedding_left = nn.Parameter(lneurons)
         ret.embedding_right = nn.Parameter(rneurons)
         ret.unembedding = nn.Parameter(self.unembedding)
+        ret.unembed_bias = nn.Parameter(self.unembed_bias)
         # ret.linear = nn.Parameter(
         #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
         # )
@@ -428,6 +445,14 @@ class MLP4(InstancedModule):
 
         self.unembedding = init_func([params.instances, params.embed_dim, self.N],) #unembed=True)
         self.activation = ACTS[params.activation]
+
+        if params.unembed_bias:
+            bias = t.empty((params.instances, self.N))
+            bound = 1 / np.sqrt(params.hidden_size)    # 1 / sqrt(fan_in)
+            bias.uniform_(-bound, bound)
+            self.unembed_bias = nn.Parameter(bias)
+        else:
+            self.unembed_bias = None
 
 
     @jaxtyped(typechecker=beartype)
@@ -462,6 +487,12 @@ class MLP4(InstancedModule):
             self.unembedding,
             "batch_size instances embed_dim, instances embed_dim d_vocab-> batch_size instances d_vocab ",
         )
+        if self.unembed_bias is not None:
+            out += einops.repeat(
+                self.unembed_bias,
+                'instances d_vocab -> batch_size instances d_vocab',
+                batch_size=out.shape[0]
+            )
         return out
 
     @t.no_grad()

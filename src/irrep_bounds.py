@@ -23,11 +23,15 @@ from utils import *
 from group_data import *
 from model_utils import *
 from group_utils import *
+from bound_utils import *
 
-from coset_bounds import model_dist
+import time
+
+# from coset_bounds import model_dist
 
 import sys, os, re
 
+@t.no_grad()
 def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
@@ -182,7 +186,21 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
         print('b_mean', b_mean)
         print('c_mean', c_mean)
 
+      
+        # vecs[irrep_name] = (unif_coef, (A_norm + B_norm) / 2, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef)
+        vecs[irrep_name] = (coef, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts)
+        print(vecs.keys())
+        print()
+    return vecs
+
+def get_unif_vecs(irreps, vecs):
+    # unif_vecs should count towards the timing of the verifier
+    # (if provided by the interpretations string, it would all need to be checked anyways.)
+    unif_vecs = dict()
+    for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+        d_irrep = irreps[name].shape[-1]
         unif_coef = t.zeros_like(coef)
+        bias_coef = 0.
         if d_irrep == 1:
             # Hardcoded for sign irrep. TODO: Support for general complex 1d irreps
             # Normalize st sum over (0,0) and (1,1) is the same
@@ -191,8 +209,11 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
             mask01 = (b_labels == 0) & (c_labels == 1)
             mask10 = (b_labels == 1) & (c_labels == 0)
             mask11 = (b_labels == 1) & (c_labels == 1)
-            mean1 = (coef[mask00].sum() + coef[mask11].sum()) / 2
-            mean2 = (coef[mask01].sum() + coef[mask10].sum()) / 2
+            mean1 = ((coef[mask00].sum() + coef[mask11].sum()) / 2).item()
+            mean2 = ((coef[mask01].sum() + coef[mask10].sum()) / 2).item()
+            sign1 = 1. if b_mean[0] == c_mean[0] else -1.
+            sign2 = 1. if b_mean[0] == c_mean[1] else -1.
+            bias_coef -= sign1 * mean1 + sign2 * mean2    # use bias to subtract out the extra rho(z) from single summation
             unif_coef[mask00] = coef[mask00] * mean1 / coef[mask00].sum()
             unif_coef[mask11] = coef[mask11] * mean1 / coef[mask11].sum()
             unif_coef[mask01] = coef[mask01] * mean2 / coef[mask01].sum()
@@ -220,33 +241,27 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True):
                     # print('coef_mean', coef_mean)
                     # print('ij_sum', ij_sum)
                     unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
-        print('b_labels', b_labels)
-        print('c_labels', c_labels)
-        # print('coef', coef)
-        # print('unif_coef', unif_coef)
-        print('coef diff', (coef - unif_coef).norm()**2 / coef.norm()**2)
-        
-        vecs[irrep_name] = (unif_coef, (A_norm + B_norm) / 2, a.mean(dim=0), b_mean, c_mean, b_labels, c_labels, b_parts, c_parts)
-        print(vecs.keys())
-        print()
-    return vecs
+        unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef)
+    return unif_vecs 
             
-def get_idealized_model(model, irreps, irrep_idx_dict, vecs):
+@t.no_grad()
+def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
     lneurons, rneurons, uneurons = model.get_neurons(squeeze=True)
     new_ln, new_rn, new_un = t.zeros_like(lneurons), t.zeros_like(rneurons), t.zeros_like(uneurons)
-    for irrep_name, (coef, A_norm, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+    new_bias = 0.
+    for irrep_name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef) in unif_vecs.items():
         print(irrep_name)
         irrep_idxs = irrep_idx_dict[irrep_name]
         b = b_mean[b_labels]
         c = c_mean[c_labels]
-        irrep_ln = einops.einsum(b, irreps[irrep_name], a_mean, 'm d1, G d1 d2, d2 -> G m')# * A_norm
-        irrep_rn = einops.einsum(a_mean, irreps[irrep_name], c, 'd1, G d1 d2, m d2 -> G m')# * A_norm
-        irrep_un = coef * einops.einsum(b, irreps[irrep_name], c, 'm d1, G d1 d2, m d2 -> G m')# / A_norm
+        irrep_ln = einops.einsum(b, irreps[irrep_name], a_mean, 'm d1, G d1 d2, d2 -> G m')
+        irrep_rn = einops.einsum(a_mean, irreps[irrep_name], c, 'd1, G d1 d2, m d2 -> G m')
+        irrep_un = coef * einops.einsum(b, irreps[irrep_name], c, 'm d1, G d1 d2, m d2 -> G m')
         for i in range(irrep_ln.shape[1]):
-            if irrep_un[:, i].norm() > 1e-8:
+            if irrep_un[:, i].abs().max() > 1e-8:
                 # degree of freedom in scaling u and l/r proportionally
                 # use this to match u to original norm
                 ucoef = t.dot(irrep_un[:,i], uneurons[:,irrep_idxs[i]]) / t.dot(irrep_un[:,i], irrep_un[:,i])
@@ -254,55 +269,134 @@ def get_idealized_model(model, irreps, irrep_idx_dict, vecs):
                 irrep_ln[:, i] /= ucoef
                 irrep_rn[:, i] /= ucoef
             else:
-                #un has been zeroed out
-                irrep_un[:, i] = 0. # uneurons[:, irrep_idxs[i]]
-                irrep_ln[:, i] = lneurons[:, irrep_idxs[i]]
-                irrep_rn[:, i] = rneurons[:, irrep_idxs[i]]
+                # un has been zeroed out in the preceding step
+                # more efficient to keep it the same and zero out l/r
+                irrep_un[:, i] = uneurons[:, irrep_idxs[i]]
+                irrep_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
+                irrep_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
         print('l diff', (irrep_ln - lneurons[:,irrep_idxs]).norm()**2 / lneurons[:,irrep_idxs].norm()**2)
         print('r diff', (irrep_rn - rneurons[:,irrep_idxs]).norm()**2 / rneurons[:,irrep_idxs].norm()**2)
         print('u diff', (irrep_un - uneurons[:,irrep_idxs]).norm()**2 / uneurons[:,irrep_idxs].norm()**2)
         new_ln[:,irrep_idxs] = irrep_ln
         new_rn[:,irrep_idxs] = irrep_rn
         new_un[:,irrep_idxs] = irrep_un
+        # Hardcoded ideal bias for sign rnep
+        if abs(bias_coef) > 1e-8:
+            assert irreps[irrep_name].shape[-1] == 1, 'Only 1d irrep supported for bias'
+            new_bias += irreps[irrep_name].squeeze() * bias_coef
+
+    for i in range(lneurons.shape[-1]):
+        if max(new_un[:, i].abs().max(),  new_ln[:, i].abs().max(), new_rn[:, i].abs().max()) < 1e-8:
+            # dead neuron. might as well set un to origial
+                new_un[:, i] = uneurons[:, i]
+                new_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
+                new_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
 
     print('total')
-    print('l diff', (new_ln - lneurons).norm()**2 / lneurons.norm()**2)
-    print('r diff', (new_rn - rneurons).norm()**2 / rneurons.norm()**2)
-    print('u diff', (new_un - uneurons).norm()**2 / uneurons.norm()**2)
+    print('l 1-r2', (new_ln - lneurons).norm()**2 / lneurons.norm()**2)
+    print('r 1-r2', (new_rn - rneurons).norm()**2 / rneurons.norm()**2)
+    print('u 1-r2', (new_un - uneurons).norm()**2 / uneurons.norm()**2)
+    print('bias 1-r2', (new_bias - model.unembed_bias.squeeze()).norm()**2 / model.unembed_bias.squeeze().norm()**2)
     ret = copy.deepcopy(model)
     ret.embedding_left = nn.Parameter(new_ln.unsqueeze(0))
     ret.embedding_right = nn.Parameter(new_rn.unsqueeze(0))
     ret.unembedding = nn.Parameter(new_un.unsqueeze(0).mT)
+    ret.unembed_bias = nn.Parameter(new_bias.unsqueeze(0))
     return ret
 
-def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
-    assert len(model1) == 1 and len(model2) == 1, "must be single instances"
-    ln1, rn1, un1 = model1.get_neurons()
-    ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
-    ln2, rn2, un2 = model2.get_neurons()
-    ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
-    M = 0
-    norm21 = lambda A: A.norm(dim=0).max()
-    norm22 = lambda A: t.linalg.matrix_norm(A, ord=2)
-    for irrep_name, (coef, A_norm, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
-        irrep_idxs = irrep_idx_dict[irrep_name]
-        for b_part in b_parts:
-            part_idxs = t.tensor(irrep_idxs)[t.isin(b_labels, t.tensor(b_part))]
-            part_ln1, part_rn1, part_un1 = ln1[:,part_idxs], rn1[:,part_idxs], un1[:,part_idxs]
-            part_ln2, part_rn2, part_un2 = ln2[:,part_idxs], rn2[:,part_idxs], un2[:,part_idxs]
-            part_M = norm22(part_un1) * (norm21(part_ln1 - part_ln2) + norm21(part_rn1 - part_rn2)) \
-                        + norm22(part_un2 - part_un1) * (norm21(part_ln2) + norm21(part_rn2))
-            M += part_M.item()
-            print(irrep_name)
-            print('l diff', norm21(part_ln1 - part_ln2))
-            print('r diff', norm21(part_rn1 - part_rn2))
-            print('u diff', norm22(part_un1 - part_un2))
-            print('l norm', norm21(part_ln1))
-            print('r norm', norm21(part_rn1))
-            print('u norm', norm22(part_un1))
-            print(part_M.item())
-    return M
+# def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
+#     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
+#     ln1, rn1, un1 = model1.get_neurons()
+#     ln1, rn1, un1 = ln1.squeeze(0), rn1.squeeze(0), un1.squeeze(0)
+#     ln2, rn2, un2 = model2.get_neurons()
+#     ln2, rn2, un2 = ln2.squeeze(0), rn2.squeeze(0), un2.squeeze(0)
+#     M = 0
+#     norm21 = lambda A: A.norm(dim=0).max()
+#     norm22 = lambda A: t.linalg.matrix_norm(A, ord=2)
+#     for irrep_name, (coef, A_norm, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+#         irrep_idxs = irrep_idx_dict[irrep_name]
+#         for b_part in b_parts:
+#             part_idxs = t.tensor(irrep_idxs)[t.isin(b_labels, t.tensor(b_part))]
+#             part_ln1, part_rn1, part_un1 = ln1[:,part_idxs], rn1[:,part_idxs], un1[:,part_idxs]
+#             part_ln2, part_rn2, part_un2 = ln2[:,part_idxs], rn2[:,part_idxs], un2[:,part_idxs]
+#             part_M = norm22(part_un1) * (norm21(part_ln1 - part_ln2) + norm21(part_rn1 - part_rn2)) \
+#                         + norm22(part_un2 - part_un1) * (norm21(part_ln2) + norm21(part_rn2))
+#             M += part_M.item()
+#             print(irrep_name)
+#             print('l diff', norm21(part_ln1 - part_ln2))
+#             print('r diff', norm21(part_rn1 - part_rn2))
+#             print('u diff', norm22(part_un1 - part_un2))
+#             print('l norm', norm21(part_ln1))
+#             print('r norm', norm21(part_rn1))
+#             print('u norm', norm22(part_un1))
+#             print(part_M.item())
+#     return M
 
+@t.no_grad()
+def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False):
+    t0 = time.time()
+    unif_vecs = get_unif_vecs(irreps, vecs)
+    try:
+        ideal = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
+    except AssertionError as e:
+        print(e)
+        return 0., time.time() - t0
+    t1 = time.time()
+    # Check that ideal_model depends only on x^-1zy^-1. Don't time this.
+    margins = []
+    for i, j in product(range(len(group)), repeat=2):
+        out = ideal(t.tensor([[i, j]])).flatten()
+        top2 = out.topk(k=2).values
+        margins.append((top2[0] - top2[1]).item())
+    assert np.std(margins) < 1e-5, 'ideal model not equivariant'
+    t2 = time.time()
+    errs = model_dist_xy(model, ideal, 'inf')
+    id = group.identity_idx()
+    # ideal is equivaraint, so we can just check the margin of the identity
+    out = ideal(t.tensor([[id, id]])).flatten()
+    id_out = out[id].item()
+    out[id] = -t.inf
+    margin = id_out - out[id].max().item()
+    acc = (t.tensor(errs) < margin).float().mean().item()
+    t3 = time.time()
+    # check irreps
+    for name, irrep in irreps.items():
+        if not irrep_idx_dict[name]:
+            continue
+        if not group.is_irrep(irrep):
+            print('Not irrep!!')
+            return 0., time.time() - t2 + t1 - t0
 
-def irrep_bound(model, group, irreps, irrep_idx_dict, vecs):
-    pass
+    for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+        if not irrep_idx_dict[name]:
+            continue
+        irrep = irreps[name]
+        # Check that irrep is G-action on each partition of b's clusters
+        for i, b_part in enumerate(b_parts):
+            T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
+            T = (T > 1 - 1e-2).int()
+            if not ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()):
+                print('Not permutation on b!!!')
+                return 0., time.time() - t2 + t1 - t0
+    t4 = time.time()
+    # print('idealization time', t1 - t0)
+    # print('bound time', t3 - t2)
+    # print('irrep checks time', t4 - t3)
+    # print('total time', t4 - t2 + t1 - t0)
+    return acc, t4 - t2 + t1 - t0
+
+@t.no_grad()
+def naive_acc_bound(model, group):
+    # Do this untensorized for a fair comparison with irrep_acc_bound
+    # TODO: tensorize irrep_acc_bound
+    t0 = time.time()
+    corrects = []
+    for i, j in product(range(len(group)), repeat=2):
+        out = model(t.tensor([[i, j]])).flatten()
+        label = group.mult_idx(i, j)
+        corrects.append((out.argmax() == label).int().item())
+    acc = np.mean(corrects).item()
+    t1 = time.time()
+    return acc, t1 - t0
+    
+    
