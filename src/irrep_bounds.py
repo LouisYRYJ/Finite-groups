@@ -257,6 +257,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
     lneurons, rneurons, uneurons = model.get_neurons(squeeze=True)
     new_ln, new_rn, new_un = t.zeros_like(lneurons), t.zeros_like(rneurons), t.zeros_like(uneurons)
     new_bias = t.zeros_like(model.unembed_bias.squeeze())
+    dead_neurons = set()
     for irrep_name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts, bias_coef) in unif_vecs.items():
         # print(irrep_name)
         irrep_idxs = irrep_idx_dict[irrep_name]
@@ -293,21 +294,31 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs):
     for i in range(lneurons.shape[-1]):
         if max(new_un[:, i].abs().max(),  new_ln[:, i].abs().max(), new_rn[:, i].abs().max()) < 1e-8:
             # dead neuron. might as well set un to origial
-                new_un[:, i] = uneurons[:, i]
-                new_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
-                new_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
+            dead_neurons.add(i)
+            new_un[:, i] = uneurons[:, i]
+            new_ln[:, i] = 0. # lneurons[:, irrep_idxs[i]]
+            new_rn[:, i] = 0. # rneurons[:, irrep_idxs[i]]
 
     # print('total')
     # print('l 1-r2', (new_ln - lneurons).norm()**2 / lneurons.norm()**2)
     # print('r 1-r2', (new_rn - rneurons).norm()**2 / rneurons.norm()**2)
     # print('u 1-r2', (new_un - uneurons).norm()**2 / uneurons.norm()**2)
     # print('bias 1-r2', (new_bias - model.unembed_bias.squeeze()).norm()**2 / model.unembed_bias.squeeze().norm()**2)
-    ret = copy.deepcopy(model)
-    ret.embedding_left = nn.Parameter(new_ln.unsqueeze(0))
-    ret.embedding_right = nn.Parameter(new_rn.unsqueeze(0))
-    ret.unembedding = nn.Parameter(new_un.unsqueeze(0).mT)
-    ret.unembed_bias = nn.Parameter(new_bias.unsqueeze(0))
-    return ret
+    # full representation for bounding the error
+    ideal = copy.deepcopy(model)
+    ideal.embedding_left = nn.Parameter(new_ln.unsqueeze(0))
+    ideal.embedding_right = nn.Parameter(new_rn.unsqueeze(0))
+    ideal.unembedding = nn.Parameter(new_un.unsqueeze(0).mT)
+    ideal.unembed_bias = nn.Parameter(new_bias.unsqueeze(0))
+
+    live_neurons = list(set(range(lneurons.shape[-1])) - dead_neurons)
+    # compact representation for doing forward pass
+    cpct = copy.deepcopy(model)
+    cpct.embedding_left = nn.Parameter(new_ln[:,live_neurons].unsqueeze(0))
+    cpct.embedding_right = nn.Parameter(new_rn[:,live_neurons].unsqueeze(0))
+    cpct.unembedding = nn.Parameter(new_un[:,live_neurons].unsqueeze(0).mT)
+    cpct.unembed_bias = nn.Parameter(new_bias.unsqueeze(0))
+    return ideal, cpct
 
 # def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
 #     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
@@ -342,12 +353,12 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
     t0 = time.time()
     unif_vecs = get_unif_vecs(irreps, vecs)
     try:
-        ideal = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
+        ideal, cpct = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
     except AssertionError as e:
         print(e)
         return 0., time.time() - t0
     t1 = time.time()
-    # Check that ideal_model depends only on x^-1zy^-1. Don't time this.
+    # Check that ideal_model depends only on x^-1zy^-1. Theoretically this should always hold, so don't time  this.
     margins = []
     for i, j in product(range(len(group)), repeat=2):
         out = ideal(t.tensor([[i, j]])).flatten()
@@ -357,7 +368,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
     t2 = time.time()
     # ideal is equivaraint, so we can just check the margin of the identity
     id = group.identity_idx()
-    out = ideal(t.tensor([[id, id]])).flatten()
+    out = cpct(t.tensor([[id, id]])).flatten()
     id_out = out[id].item()
     out[id] = -t.inf
     margin = id_out - out.max().item()
