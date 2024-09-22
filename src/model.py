@@ -297,7 +297,10 @@ class MLP2(InstancedModule):
         ret.embedding_left = nn.Parameter(lneurons)
         ret.embedding_right = nn.Parameter(rneurons)
         ret.unembedding = nn.Parameter(self.unembedding)
-        ret.unembed_bias = nn.Parameter(self.unembed_bias)
+        if self.unembed_bias is not None:
+            ret.unembed_bias = nn.Parameter(self.unembed_bias)
+        else:
+            ret.unembed_bias = None
         # ret.linear = nn.Parameter(
         #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
         # )
@@ -414,7 +417,10 @@ class MLP3(InstancedModule):
         ret.embedding_left = nn.Parameter(lneurons)
         ret.embedding_right = nn.Parameter(rneurons)
         ret.unembedding = nn.Parameter(self.unembedding)
-        ret.unembed_bias = nn.Parameter(self.unembed_bias)
+        if self.unembed_bias is not None:
+            ret.unembed_bias = nn.Parameter(self.unembed_bias)
+        else:
+            ret.unembed_bias = None
         # ret.linear = nn.Parameter(
         #     einops.repeat(t.eye(lneurons.shape[-1]), 'hid1 hid2 -> instances hid1 hid2', instances=self.num_instances())
         # )

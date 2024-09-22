@@ -560,11 +560,11 @@ class Group:
     @lru_cache(maxsize=None)
     def get_conj(self, a, b):
         """Conjugate of a by b"""
-        return self.mult(self.inv(b), self.mult(a, b))
+        return self.mult(self.mult(b, a), self.inv(b))
 
     @lru_cache(maxsize=None)
     def get_conj_idx(self, a, b):
-        return self.mult_idx(self.inv_idx(b), self.mult_idx(a, b))
+        return self.mult_idx(self.mult_idx(b, a), self.inv_idx(b))
 
     @lru_cache(maxsize=1024)
     def get_conj_subgroup(self, subgroup, b):

@@ -70,10 +70,10 @@ def model_dist(model1, model2, p):
     # print('u diff term', u_diff)
     # print('e diff term', e_diff)
     # print('bias diff term', bias_diff)
-    return u_diff + e_diff + bias_diff
+    return (u_diff + e_diff + bias_diff).item()
 
 @t.no_grad()
-def model_dist_xy(model1, model2, p):
+def model_dist_xy(model1, model2, p, group=None, collapse_xy=False):
     '''
     [Upper bound on ||model1(x, y) - model2(x, y)||_p for (x, y) in inputs]
     '''
@@ -81,8 +81,15 @@ def model_dist_xy(model1, model2, p):
     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
     ln1, rn1, un1 = model1.get_neurons(squeeze=True)
     ln2, rn2, un2 = model2.get_neurons(squeeze=True)
-    bias1 = model1.unembed_bias.detach().T
-    bias2 = model2.unembed_bias.detach().T
+    if model1.unembed_bias is not None:
+        bias1 = model1.unembed_bias.detach().T
+    else:
+        bias1 = t.zeros(un1.shape[0])
+    if model2.unembed_bias is not None:
+        bias2 = model2.unembed_bias.detach().T
+    else:
+        bias2 = t.zeros(un2.shape[0])
+    
     # max 2-norm along neuron dimension
     # note this is the 1->2 norm for embeddings and 2->inf norm for unembeddings
     # bc of how the transposes are
@@ -94,11 +101,19 @@ def model_dist_xy(model1, model2, p):
     ures_norm = norm_u(un1 - un2).item()
     bias_diff = norm_b(bias1 - bias2)
     ret = []
-    for i, j in product(range(ln1.shape[0]), repeat=2):
-        ret.append(
-            u1_norm * (F.relu(ln1[i] + rn1[j]) - F.relu(ln2[i] + rn2[j])).norm().item() +
-            + ures_norm * F.relu(ln2[i] + rn2[j]).norm().item() + bias_diff
-        )
+    if collapse_xy:
+        ret = t.zeros(len(group))
+        for i, j in product(range(len(group)), repeat=2):
+            ij = group.mult_idx(i, j)
+            ret[ij] = max(ret[ij], (u1_norm * (F.relu(ln1[i] + rn1[j]) - F.relu(ln2[i] + rn2[j])).norm()
+                + ures_norm * F.relu(ln2[i] + rn2[j]).norm().item() + bias_diff))
+    else:
+        for i, j in product(range(ln1.shape[0]), repeat=2):
+            ret.append(
+                (u1_norm * (F.relu(ln1[i] + rn1[j]) - F.relu(ln2[i] + rn2[j])).norm()
+                + ures_norm * F.relu(ln2[i] + rn2[j]).norm().item() + bias_diff)
+            )
+        ret = t.tensor(ret)
     return ret
 
 # def model_dist2(model1, model2):
