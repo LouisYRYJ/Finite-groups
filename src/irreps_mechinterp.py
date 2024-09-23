@@ -298,6 +298,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     models, params = dl_model(args.model_name, os.getenv('HOME') + '/models')
     irreps_report(models[-1], params, irrep_filter=args.filter, acc_thresh=args.acc_thresh, loss_thresh=args.loss_thresh, clusters=args.clusters)
+    t.save((A_VAR, LOSS, NORM), 'avar_loss_norm.pt')
     plt.scatter(A_VAR, LOSS)
     plt.xscale('log')
     plt.xlabel('a variance')

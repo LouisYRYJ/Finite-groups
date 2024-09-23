@@ -75,8 +75,10 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
             print(irrep_name)
         if not irrep_idx_dict[irrep_name]:
             continue
+        if np.sign(group.get_frobenius_schur(irrep)).item() <= 0: 
+            print(f'{irrep_name} has Frobenius-Schur indicator <= 0, not currently supported. Skipping!')
+            continue
         irrep_lneurons, irrep_rneurons, irrep_uneurons = lneurons[:,irrep_idx_dict[irrep_name]], rneurons[:,irrep_idx_dict[irrep_name]], uneurons[:,irrep_idx_dict[irrep_name]]
-        assert np.sign(group.get_frobenius_schur(irrep)).item() == 1, 'Only real irreps supported'
         d_irrep = irrep.shape[-1]
         
         flat_irrep = einops.rearrange(irrep, 'n d1 d2 -> n (d1 d2)')
@@ -366,7 +368,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
         margins.append((top2[0] - top2[1]).item())
     assert np.std(margins) < 1e-5, 'ideal model not equivariant'
     t2 = time.time()
-    # ideal is equivaraint, so we can just check the margin of the identity
+    # ideal is equivariant, so we can just check the margin of the identity
     id = group.identity_idx()
     out = cpct(t.tensor([[id, id]])).flatten()
     id_out = out[id].item()

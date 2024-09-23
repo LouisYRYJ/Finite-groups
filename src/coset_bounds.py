@@ -25,6 +25,8 @@ from model_utils import *
 from group_utils import *
 from bound_utils import *
 
+import time
+
 import sys, os, re
 import argparse
 
@@ -148,6 +150,7 @@ def coset_bound(model, group, left_neuron_subgroups, right_neuron_subgroups, con
     neuron_subgroups = {neuron: subgroup_name}
     subgroups = {subgroup_name: subgroup_idxs}
     '''
+    t0 = time.time()
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -184,6 +187,7 @@ def coset_bound(model, group, left_neuron_subgroups, right_neuron_subgroups, con
     # print(s)
 
     # compute margins
+    print('hi')
     margins = t.zeros(len(group))
     for z in range(len(group)):
         margins[z] = t.inf
@@ -204,7 +208,7 @@ def coset_bound(model, group, left_neuron_subgroups, right_neuron_subgroups, con
 
     # inf dist from orig to ideal model
     dist = model_dist_xy(model, ideal_model, 'inf', group=group, collapse_xy=True)
-    return (dist < margins).float().mean()
+    return (dist < margins).float().mean(), dist, margins, time.time() - t0
     
     
     
