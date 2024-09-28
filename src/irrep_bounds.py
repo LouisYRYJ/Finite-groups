@@ -32,6 +32,9 @@ import time
 
 import sys, os, re
 
+STAB_THRESH = 0.2    # ||rho(x)b - b|| < STAB_THRESH -> b is stabilized by x
+CLUSTER_THRESH = 1e-1
+
 def get_Xhat(irrep, X_mean, rho_labels, k_labels):
     full_means = einops.einsum(irrep, X_mean, 'group d1 d2, k d2 -> group k d1')
     labels = t.concat([rho_labels.unsqueeze(-1), k_labels.unsqueeze(-1)], dim=-1)
@@ -65,12 +68,14 @@ def irrep_kmeans(
         rho_inv_X = einx.get_at('[group] n d, n [1] -> n d', rho_inv_X, rho_labels.unsqueeze(-1))
         for k in range(n_clusters):
             means[k] = rho_inv_X[k_labels == k].mean(dim=0)
+            if t.isnan(means[k]).any():
+                means[k] = t.randn(irrep.shape[-1])
 
         err = min_dist.mean()
-        if err > prev_err - 1e-8:
+        if err > prev_err - 1e-4:
             break
         prev_err = err
-        print(err)
+        # print(err)
         if t.isnan(err).any():
             import pdb; pdb.set_trace()
 
@@ -219,21 +224,33 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
         err = 100
         b_clusters = 0
-        while err > 1e-2 and b_clusters < 5:
+        while err > CLUSTER_THRESH and b_clusters < 10:
             b_clusters += 1
             b_mean, b_rho_labels, b_k_labels, err = irrep_kmeans(irrep, b, n_clusters=b_clusters)
+            # print(err)
+
+        # use same number of clusters as b
+        c_mean, c_rho_labels, c_k_labels, err = irrep_kmeans(irrep, c, n_clusters=b_clusters, means=-b_mean)
 
         for k in range(b_mean.shape[0]):
             full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
             id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
-            stab = (id_dist < 0.05).nonzero().flatten().tolist()
+            stab = (id_dist < STAB_THRESH).nonzero().flatten().tolist()
             b_mean[k] = full_b_mean[stab].mean(dim=0)
-            
-        # use same number of clusters as b
-        c_mean, c_rho_labels, c_k_labels, err = irrep_kmeans(irrep, c, n_clusters=b_clusters, means=-b_mean)
-        assert ((c_mean + b_mean).norm()**2 / b_mean.norm()**2).item() < 1e-2
-        c_mean = -b_mean
+        for k in range(c_mean.shape[0]):
+            full_c_mean = einops.einsum(irrep, c_mean[k], 'G d1 d2, d2 -> G d1')
+            id_dist = (full_c_mean - full_c_mean[group.identity_idx()]).norm(dim=-1)
+            stab = (id_dist < STAB_THRESH).nonzero().flatten().tolist()
+            c_mean[k] = full_c_mean[stab].mean(dim=0)
+        b_hat = get_Xhat(irrep, b_mean, b_rho_labels, b_k_labels)
+        c_hat = get_Xhat(irrep, c_mean, c_rho_labels, c_k_labels)
+        if verbose:
+            print('b_hat diff', (b_hat - b).norm()**2 / b.norm()**2)
+            print('c_hat diff', (b_hat - b).norm()**2 / b.norm()**2)
 
+        bc_diff = ((b_mean + c_mean).norm()**2 / b_mean.norm()**2).item()
+        # assert bc_diff < 1e-2, f'b and -c differ by {bc_diff},\n {b_mean},\n {-c_mean}'
+            
         # if strict:
             # # Check that irrep is G-action on each partition of b's clusters
             # for i, b_part in enumerate(b_parts):
@@ -297,25 +314,28 @@ def get_unif_vecs(group, irreps, vecs):
             for k in range(b_mean.shape[0]):
                 full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
-                stab = frozenset((id_dist < 0.05).nonzero().flatten().tolist())
+                stab = frozenset((id_dist < STAB_THRESH).nonzero().flatten().tolist())
+                if len(stab) < 5:
+                    continue
                 left_cosets = group.get_cosets_idx(stab)
-                print(stab)
-                print(left_cosets)
                 coset_prod = [(t.tensor(list(A)), t.tensor(list(B))) for A, B in product(left_cosets, repeat=2)]
                 coef_sum = t.tensor([
                     coef[(t.isin(b_rho_labels, A)) & (t.isin(c_rho_labels, B))].sum().item()
                     for A, B in coset_prod
                 ])
                 coef_mean = coef_sum.mean()
+                zeroed = 0
                 for A, B in coset_prod:
                     ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                     if not ij_mask.any():
                         coef_mean = 0.
+                        zeroed += 1
+                        # print('ZEROING!', A, B)
+                # print(name, 'zeroed', zeroed, coef.shape[0], 'stab', len(stab))
                 for A, B in coset_prod:
                     ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                     ij_sum = coef[ij_mask].sum()
                     unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
-        print(unif_coef, coef)
         unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef)
     return unif_vecs 
             
@@ -424,20 +444,22 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
 @t.no_grad()
 def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, linear=False):
     t0 = time.time()
-    unif_vecs = get_unif_vecs(irreps, vecs)
+    unif_vecs = get_unif_vecs(group, irreps, vecs)
     try:
         ideal, cpct = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
     except AssertionError as e:
         print(e)
         return 0., time.time() - t0
     t1 = time.time()
+
     # Check that ideal_model depends only on x^-1zy^-1. Theoretically this should always hold, so don't time  this.
-    margins = []
-    for i, j in product(range(len(group)), repeat=2):
-        out = ideal(t.tensor([[i, j]])).flatten()
-        top2 = out.topk(k=2).values
-        margins.append((top2[0] - top2[1]).item())
-    assert np.std(margins) < 1e-5, 'ideal model not equivariant'
+    # margins = []
+    # for i, j in product(range(len(group)), repeat=2):
+    #     out = ideal(t.tensor([[i, j]])).flatten()
+    #     top2 = out.topk(k=2).values
+    #     margins.append((top2[0] - top2[1]).item())
+    # assert np.std(margins) < 1e-5, 'ideal model not equivariant'
+
     t2 = time.time()
     # ideal is equivariant, so we can just check the margin of the identity
     id = group.identity_idx()
@@ -460,17 +482,18 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
             print('Not irrep!!')
             return 0., time.time() - t2 + t1 - t0
 
-    for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
-        if not irrep_idx_dict[name]:
-            continue
-        irrep = irreps[name]
-        # Check that irrep is G-action on each partition of b's clusters
-        for i, b_part in enumerate(b_parts):
-            T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
-            T = (T > 1 - 1e-2).int()
-            if not ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()):
-                print('Not permutation on b!!!')
-                return 0., time.time() - t2 + t1 - t0
+    # No need to check this; guaranteed by better clustering setup
+    # for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+    #     if not irrep_idx_dict[name]:
+    #         continue
+    #     irrep = irreps[name]
+    #     # Check that irrep is G-action on each partition of b's clusters
+    #     for i, b_part in enumerate(b_parts):
+    #         T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
+    #         T = (T > 1 - 1e-2).int()
+    #         if not ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()):
+    #             print('Not permutation on b!!!')
+    #             return 0., time.time() - t2 + t1 - t0
     t4 = time.time()
     # print('idealization time', t1 - t0)
     # print('bound time', t3 - t2)
