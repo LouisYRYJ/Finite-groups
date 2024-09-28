@@ -271,8 +271,10 @@ def irreps_report(model, params, irrep_filter=None, acc_thresh=0.999, loss_thres
 
         for k, irrep_idxs in irrep_idx_dict.items():
             if irrep_filter is not None and not re.compile(irrep_filter).match(k):
+                A_VAR.append(100)
                 continue
             if len(irrep_idxs) < 20:
+                A_VAR.append(100)
                 continue
 
             print(f'Irrep {k} has {len(irrep_idxs)} neurons')
@@ -298,7 +300,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     models, params = dl_model(args.model_name, os.getenv('HOME') + '/models')
     irreps_report(models[-1], params, irrep_filter=args.filter, acc_thresh=args.acc_thresh, loss_thresh=args.loss_thresh, clusters=args.clusters)
-    t.save((A_VAR, LOSS, NORM), 'avar_loss_norm.pt')
+    t.save((A_VAR, LOSS, NORM), 'avar_loss_norm_temp.pt')
     plt.scatter(A_VAR, LOSS)
     plt.xscale('log')
     plt.xlabel('a variance')

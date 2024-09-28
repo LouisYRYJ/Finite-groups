@@ -171,7 +171,7 @@ def is_grokked_summary(
         )
 
 from sklearn.cluster import KMeans
-def cluster(vecs, num_seeds=30, thresh=1, max=1000):
+def cluster(vecs, num_seeds=30, thresh=1, max=1000, verbose=False):
     n_clusters = 1
     losses = []
     while not losses or losses[-1] > thresh:
@@ -186,7 +186,8 @@ def cluster(vecs, num_seeds=30, thresh=1, max=1000):
             break
         if n_clusters >= max:
             break
-        # print(n_clusters, losses[-1])
+        if verbose:
+            print(n_clusters, losses[-1])
     return kmeans, n_clusters, losses
 
 def make_fourier_basis(group_order):
