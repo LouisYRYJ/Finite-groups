@@ -665,6 +665,20 @@ class Group:
         snap = lambda x: x * (x.abs() > zero_thresh)
         return t.complex(snap(chars.real), snap(chars.imag))
 
+    def get_permutation_idx(self, subgroup):
+        '''
+        Given subgroup H, returns permutation matrices (G, G/H, G/H) corresponding to left action of G on H
+        '''
+        cosets = list(self.get_cosets_idx(subgroup))
+        perm_all = []
+        for g in range(len(self)):
+            perm_g = t.zeros((len(cosets), len(cosets)))
+            for i, coset in enumerate(cosets):
+                g_coset = frozenset([self.mult_idx(g, x) for x in coset])
+                perm_g[i, cosets.index(g_coset)] = 1
+            perm_all.append(perm_g)
+        return t.stack(perm_all, dim=0)
+
     def hash(self):
         m = hashlib.sha256()
         m.update(str(self.cayley_table.int().tolist()).encode())
