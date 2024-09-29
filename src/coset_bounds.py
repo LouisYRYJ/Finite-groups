@@ -114,7 +114,8 @@ def coset_ideal_model(model, group, left_neuron_subgroups, right_neuron_subgroup
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
-    assert model.unembed_bias is None, "bias not supported"
+    if model.unembed_bias is not None:
+        print('Warning: bias present. Will be zeroed in ideal model.')
     ln, rn, un = model.get_neurons(True)
 
     ideal_ln, ideal_rn, ideal_un = t.zeros_like(ln), t.zeros_like(rn), t.zeros_like(un)
@@ -134,9 +135,9 @@ def coset_ideal_model(model, group, left_neuron_subgroups, right_neuron_subgroup
         ideal_un[not_Hginv, i] = not_Hginv_mean
 
 
-    print('ln 1-r2', ((ln - ideal_ln).norm()**2 / ln.norm()**2).item())
-    print('rn 1-r2', ((rn - ideal_rn).norm()**2 / rn.norm()**2).item())
-    print('un 1-r2', ((un - ideal_un).norm()**2 / un.norm()**2).item())
+    # print('ln 1-r2', ((ln - ideal_ln).norm()**2 / ln.norm()**2).item())
+    # print('rn 1-r2', ((rn - ideal_rn).norm()**2 / rn.norm()**2).item())
+    # print('un 1-r2', ((un - ideal_un).norm()**2 / un.norm()**2).item())
     
     new_model = copy.deepcopy(model)
     new_model.embedding_left = nn.Parameter(ideal_ln.unsqueeze(0))
@@ -187,7 +188,7 @@ def coset_bound(model, group, left_neuron_subgroups, right_neuron_subgroups, con
     # print(s)
 
     # compute margins
-    print('hi')
+    # print('hi')
     margins = t.zeros(len(group))
     for z in range(len(group)):
         margins[z] = t.inf
@@ -204,7 +205,7 @@ def coset_bound(model, group, left_neuron_subgroups, right_neuron_subgroups, con
             # print('   zp_margin', zp_margin)
             margins[z] = min(margins[z], zp_margin)
 
-    print(margins)
+    # print(margins)
 
     # inf dist from orig to ideal model
     dist = model_dist_xy(model, ideal_model, 'inf', group=group, collapse_xy=True)
