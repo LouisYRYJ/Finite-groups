@@ -468,7 +468,7 @@ class Group:
             d_count[d] += 1
         return real_irreps
 
-    def is_irrep(self, irrep, thresh=1e-4):
+    def is_rep(self, irrep, thresh=1e-4):
         for i, j in product(range(len(self)), repeat=2):
             if (irrep[i] @ irrep[j] - irrep[self.mult_idx(i, j)]).abs().max() > thresh:
                 return False
