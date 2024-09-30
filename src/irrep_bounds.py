@@ -382,30 +382,30 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, strict=False, li
         acc = (t.tensor(errs) < margin).float().mean().item()
     t3 = time.time()
     # check irreps
-    # for name, irrep in irreps.items():
-    #     if not irrep_idx_dict[name]:
-    #         continue
-    #     if not group.is_irrep(irrep):
-    #         print('Not irrep!!')
-    #         return 0., time.time() - t2 + t1 - t0
+    for name, irrep in irreps.items():
+        if not irrep_idx_dict[name]:
+            continue
+        if not group.is_irrep(irrep):
+            print('Not irrep!!')
+            return 0., time.time() - t2 + t1 - t0
 
-    # for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
-    #     if not irrep_idx_dict[name]:
-    #         continue
-    #     irrep = irreps[name]
-    #     # Check that irrep is G-action on each partition of b's clusters
-    #     for i, b_part in enumerate(b_parts):
-    #         T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
-    #         T = (T > 1 - 1e-2).int()
-    #         if not ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()):
-    #             print('Not permutation on b!!!')
-    #             return 0., time.time() - t2 + t1 - t0
+    for name, (coef, a_mean, b_mean, c_mean, b_labels, c_labels, b_parts, c_parts) in vecs.items():
+        if not irrep_idx_dict[name]:
+            continue
+        irrep = irreps[name]
+        # Check that irrep is G-action on each partition of b's clusters
+        for i, b_part in enumerate(b_parts):
+            T = einops.einsum(b_mean[b_part], irrep, b_mean[b_part], 'm1 d1, G d1 d2, m2 d2 -> G m1 m2')
+            T = (T > 1 - 1e-2).int()
+            if not ((T.sum(axis=1) == 1).all() and (T.sum(axis=2) == 1).all()):
+                print('Not permutation on b!!!')
+                return 0., time.time() - t2 + t1 - t0
     t4 = time.time()
     # print('idealization time', t1 - t0)
     # print('bound time', t3 - t2)
     # print('irrep checks time', t4 - t3)
     # print('total time', t4 - t2 + t1 - t0)
-    return acc, t4 - t2 + t1 - t0, margins, errs
+    return acc, t4 - t2 + t1 - t0
 
 @t.no_grad()
 def naive_acc_bound(model, group):
