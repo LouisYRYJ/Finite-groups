@@ -35,6 +35,13 @@ import sys, os, re
 STAB_THRESH = 0.2    # ||rho(x)b - b|| < STAB_THRESH -> b is stabilized by x
 CLUSTER_THRESH = 1e-1
 
+def check_rho_set(irrep, X):
+    irrep_X = einops.einsum(irrep, X, 'group d1 d2, k d2 -> group k d1')
+    X = X.unsqueeze(0)
+    dist = (irrep_X - X).norm(dim=-1)
+    assert (dist < 1e-3).any(dim=0).all(), 'Not a rho-set!'
+
+
 def get_Xhat(irrep, X_mean, rho_labels, k_labels):
     full_means = einops.einsum(irrep, X_mean, 'group d1 d2, k d2 -> group k d1')
     labels = t.concat([rho_labels.unsqueeze(-1), k_labels.unsqueeze(-1)], dim=-1)
@@ -248,7 +255,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
             print('b_hat diff', (b_hat - b).norm()**2 / b.norm()**2)
             print('c_hat diff', (b_hat - b).norm()**2 / b.norm()**2)
 
-        bc_diff = ((b_mean + c_mean).norm()**2 / b_mean.norm()**2).item()
+        # bc_diff = ((b_mean + c_mean).norm()**2 / b_mean.norm()**2).item()
         # assert bc_diff < 1e-2, f'b and -c differ by {bc_diff},\n {b_mean},\n {-c_mean}'
             
         # if strict:
@@ -355,11 +362,14 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
         if verbose:
             print(irrep_name)
         irrep_idxs = irrep_idx_dict[irrep_name]
-        b = get_Xhat(irreps[irrep_name], b_mean, b_rho_labels, b_k_labels)
-        c = get_Xhat(irreps[irrep_name], c_mean, c_rho_labels, c_k_labels)
-        irrep_ln = einops.einsum(b, irreps[irrep_name], a_mean, 'm d1, G d1 d2, d2 -> G m')
-        irrep_rn = einops.einsum(a_mean, irreps[irrep_name], c, 'd1, G d1 d2, m d2 -> G m')
-        irrep_un = coef * einops.einsum(b, irreps[irrep_name], c, 'm d1, G d1 d2, m d2 -> G m')
+        irrep = irreps[irrep_name]
+        b = get_Xhat(irrep, b_mean, b_rho_labels, b_k_labels)
+        c = get_Xhat(irrep, c_mean, c_rho_labels, c_k_labels)
+        check_rho_set(irrep, b)
+        check_rho_set(irrep, c)
+        irrep_ln = einops.einsum(b, irrep, a_mean, 'm d1, G d1 d2, d2 -> G m')
+        irrep_rn = einops.einsum(a_mean, irrep, c, 'd1, G d1 d2, m d2 -> G m')
+        irrep_un = coef * einops.einsum(b, irrep, c, 'm d1, G d1 d2, m d2 -> G m')
         for i in range(irrep_ln.shape[1]):
             if irrep_un[:, i].abs().max() > 1e-8:
                 # degree of freedom in scaling u and l/r proportionally
@@ -452,12 +462,12 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
         model = model.fold_linear()
     ln, rn, un = model.get_neurons(squeeze=True)
     ubias = model.unembed_bias.squeeze()
-    unif_vecs, all_zeroed = get_unif_vecs(group, irreps, vecs)
     try:
+        unif_vecs, all_zeroed = get_unif_vecs(group, irreps, vecs)
         ideal, cpct = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
     except AssertionError as e:
         print(e)
-        return 0., time.time() - t0
+        return 0., time.time() - t0, True
     t1 = time.time()
 
     # Check that ideal_model depends only on x^-1zy^-1. Theoretically this should always hold, so don't time  this.
@@ -488,12 +498,14 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
     acc = (t.tensor(errs) < margin + t.tensor(orig_correct_logits) - ideal_correct_logit).float().mean().item()
     t3 = time.time()
     # check irreps
-    for name, irrep in irreps.items():
-        if not irrep_idx_dict[name]:
-            continue
-        if not group.is_rep(irrep):
-            print('Not rep!!')
-            return 0., time.time() - t2 + t1 - t0
+    # this is |G|^2d^3 time complexity, which is unnecessarily wasteful.
+    # All we really need is that each rho-set is permuted by rho (checked in get_idealized_model)
+    # for name, irrep in irreps.items():
+    #     if not irrep_idx_dict[name]:
+    #         continue
+    #     if not group.is_rep(irrep):
+    #         print('Not rep!!')
+    #         return 0., time.time() - t2 + t1 - t0
 
     t4 = time.time()
     # print('idealization time', t1 - t0)
@@ -507,6 +519,8 @@ def naive_acc_bound(model, group):
     # Do this untensorized for a fair comparison with irrep_acc_bound
     # TODO: tensorize irrep_acc_bound
     t0 = time.time()
+    if not isinstance(model, MLP4):
+        model = model.fold_linear()
     corrects = []
     for i, j in product(range(len(group)), repeat=2):
         out = model(t.tensor([[i, j]])).flatten()
