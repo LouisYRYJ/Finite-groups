@@ -33,7 +33,8 @@ import time
 import sys, os, re
 
 STAB_THRESH = 0.2    # ||rho(x)b - b|| < STAB_THRESH -> b is stabilized by x
-CLUSTER_THRESH = 1e-1
+CLUSTER_THRESH = 5e-3
+MAX_CLUSTERS = 2
 
 def check_rho_set(irrep, X):
     irrep_X = einops.einsum(irrep, X, 'group d1 d2, k d2 -> group k d1')
@@ -121,7 +122,7 @@ def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     }
     return irreps, irrep_idx_dict
 
-def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False):
+def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False, num_clusters=None):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -230,14 +231,34 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
         #     print('a_mean', a.mean(dim=0))
 
         err = 100
-        b_clusters = 0
-        while err > CLUSTER_THRESH and b_clusters < 10:
-            b_clusters += 1
-            b_mean, b_rho_labels, b_k_labels, err = irrep_kmeans(irrep, b, n_clusters=b_clusters)
-            # print(err)
+        b_mean = None
+        b_rho_labels = None
+        b_k_labels = None
+        best_err = 10000
+        for tries in range(200):
+            # for num_clusters in ([num_clusters] if num_clusters is not None else range(1, MAX_CLUSTERS)):
+            cur_b_mean, cur_b_rho_labels, cur_b_k_labels,  err = irrep_kmeans(irrep, b, n_clusters=num_clusters)
+            if err < best_err:
+                best_err = err
+                b_mean = cur_b_mean
+                b_rho_labels = cur_b_rho_labels
+                b_k_labels = cur_b_k_labels
 
-        # use same number of clusters as b
-        c_mean, c_rho_labels, c_k_labels, err = irrep_kmeans(irrep, c, n_clusters=b_clusters, means=-b_mean)
+
+
+        c_mean, c_rho_labels, c_k_labels,  err = irrep_kmeans(irrep, c, n_clusters=num_clusters, means=-b_mean)
+        # c_mean = None
+        # c_rho_labels = None
+        # c_k_labels = None
+        # best_err = 10000
+        # for tries in range(200):
+        #     # for num_clusters in ([num_clusters] if num_clusters is not None else range(1, MAX_CLUSTERS)):
+        #     cur_c_mean, cur_c_rho_labels, cur_c_k_labels,  err = irrep_kmeans(irrep, c, n_clusters=num_clusters, means=-b_mean)
+        #     if err < best_err:
+        #         best_err = err
+        #         b_mean = cur_b_mean
+        #         b_rho_labels = cur_b_rho_labels
+        #         b_k_labels = cur_b_k_labels
 
         for k in range(b_mean.shape[0]):
             full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
@@ -346,6 +367,8 @@ def get_unif_vecs(group, irreps, vecs):
                     ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                     ij_sum = coef[ij_mask].sum()
                     unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
+            # print('coef', coef)
+            # print('unif_coef', unif_coef)
         unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef)
     return unif_vecs, all_zeroed
             
@@ -485,7 +508,6 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
     ideal_correct_logit = out[id].item()
     out[id] = -t.inf
     margin = ideal_correct_logit - out.max().item()
-    margins = dict()
     orig_correct_logits = []
     for x, y in product(range(len(group)), repeat=2): # It's important that this iteration is done in the same order as in model_dist_xy
         x_embed = ln[x]
