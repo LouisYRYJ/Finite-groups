@@ -41,6 +41,14 @@ def is_complex(M, thresh=1e-10):
     return ret
 
 
+# There are a couple weird design choices here to be careful of
+# (and maybe changed, if we want to isolate this out into a general-purpose library)
+# 1. Group elements can be referred to by name (arbitrary python object) or by index (int, index of elem in Group.elements)
+#    Lots of methods have an _elem version (operating on names) and _idx version (operating on idxs)
+# 2. It's basically always better to construct groups using Group.from_gap instead of __init__
+#    since the former populates Group.gap_repr, which GAP can operate on much faster (for finding subgroups, irreps, etc).
+#    (If there is no Group.gap_repr, then the cayley table needs to be converted into a finitely presented GAP object, which is very slow to work with.)
+
 class Group:
     """
     Implements a group as a idx -> element lookup table and a Cayley table on idxs.
