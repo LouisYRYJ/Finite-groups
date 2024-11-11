@@ -51,13 +51,12 @@ class Parameters:
     save_weights: bool = False
     save_losses: bool = False
     load_weights: str = ""
-    wandb: bool = False
+    wandb: bool = True
     thresh_grok: float = 0.95
     project: str = "group generalization"
     model: str = "MLP3"
     unembed_bias: bool = False
     init_func: str = "kaiming_uniform"
-    correct_embed: bool = False
     replacement: bool = False
 
 
@@ -154,7 +153,8 @@ def train(model, group_dataset, params):
             json_str = json.dumps(dataclasses.asdict(params))
             f.write(json_str)
 
-    wandb.watch(model, log="all", log_freq=10)
+    if params.wandb:
+        wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
     epoch_train_margin = t.full((params.instances,), np.inf, device=device)
