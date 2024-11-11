@@ -13,6 +13,7 @@ import numpy as np
 import json
 import os
 import re
+from collections import defaultdict
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -110,26 +111,34 @@ def get_margin(
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
 def test_loss(
-    model, group_dataset, loss_std=False
+    model, group_dataset, loss_std=False, batch_size=None
 ) -> dict[str, Float[t.Tensor, "instance"]]:
     """Create all possible pairs (x,y) and return loss and accuracy for all groups in group_dataset."""
     N = model.N
     test_inputs = t.tensor(list(product(range(N), repeat=2)), device=device)
+    if not batch_size:
+        batch_size = N**2
+    else:
+        assert not loss_std, 'batched loss_std not currently supported.'
 
-    logits = model(test_inputs)
-    loss_dict = dict()
+    loss_dict = defaultdict(lambda: 0)
     for i, group in enumerate(group_dataset.groups):
         labels = einops.rearrange(group.cayley_table, "a b -> (a b)").to(device)
-        loss, std = get_cross_entropy(logits, labels, return_std=True)
-        accuracy = get_accuracy(logits, labels)
-        # Don't add group name to wandb logs; it makes plot searching less convenient
-        # Instead store group names in wandb config (in train.py)
-        loss_dict[f"G{i}_loss"] = loss
-        if loss_std:
-            loss_dict[f"G{i}_loss_std"] = loss_std
-        loss_dict[f"G{i}_acc"] = accuracy
-        # loss_dict[f"G{i}_loss_{group.name}"] = loss
-        # loss_dict[f"G{i}_acc_{group.name}"] = accuracy
+        for j in range(0, N**2, batch_size):
+            batch = test_inputs[j:j+batch_size]
+            batch_logits = model(batch)
+            batch_labels = labels[j:j+batch_size]
+            loss, std = get_cross_entropy(batch_logits, batch_labels, return_std=True)
+            accuracy = get_accuracy(batch_logits, batch_labels)
+            # Don't add group name to wandb logs; it makes plot searching less convenient
+            # Instead store group names in wandb config (in train.py)
+            loss_dict[f"G{i}_loss"] += loss * batch.shape[0] / N**2
+            if loss_std:
+                # TODO: this isn't the correct way to aggregate std over batches. fix this.
+                loss_dict[f"G{i}_loss_std"] += loss_std * batch.shape[0] / N**2
+            loss_dict[f"G{i}_acc"] += accuracy * batch.shape[0] / N**2
+            # loss_dict[f"G{i}_loss_{group.name}"] = loss
+            # loss_dict[f"G{i}_acc_{group.name}"] = accuracy
 
     return loss_dict
 

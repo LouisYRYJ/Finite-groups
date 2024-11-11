@@ -62,7 +62,6 @@ class Parameters:
 
 
 def train(model, group_dataset, params):
-    # import pdb; pdb.set_trace()
     if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
     t.manual_seed(params.seed)
@@ -100,7 +99,6 @@ def train(model, group_dataset, params):
         drop_last=True,
         sampler=sampler,
     )
-
 
     if params.optimizer == "sgd":
         optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
@@ -165,7 +163,7 @@ def train(model, group_dataset, params):
     for epoch in tqdm(range(params.epochs)):
         with t.no_grad():
             model.eval()
-            loss_dict = test_loss(model, group_dataset)
+            loss_dict = test_loss(model, group_dataset, batch_size=batch_size)
             loss_dict["epoch_train_loss"] = epoch_train_loss
             loss_dict["epoch_train_acc"] = epoch_train_acc
             loss_dict["epoch_train_margin"] = epoch_train_margin
