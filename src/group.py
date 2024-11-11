@@ -146,13 +146,17 @@ class Group:
         return Group(elements, table)
 
     @staticmethod
-    def from_gap(gap_group: GapObj) -> Group:
-        elements = [str(elem) for elem in gap_group.Elements()]
+    def from_gap(gap_group: GapObj, elements=None) -> Group:
+        if elements is None:
+            elements = list(gap_group.Elements())
+        else:
+            assert set(elements) == set(gap_group.Elements())
         N = len(elements)
-        gap_table = gap_group.MultiplicationTable()
+        # gap_table = gap_group.MultiplicationTable()
         table = t.zeros((N, N), dtype=t.int64)
         for i, j in product(range(N), repeat=2):
-            table[i, j] = int(gap_table[i, j]) - 1  # gap_table is 1-indexed
+            # table[i, j] = int(gap_table[i, j]) - 1  # gap_table is 1-indexed
+            table[i, j] = elements.index(elements[i] * elements[j])
         ret = Group(elements, table)
         ret.gap_repr = gap_group
         return ret
@@ -287,7 +291,7 @@ class Group:
             if verbose:
                 print("Computing subgroups from gap_repr")
             assert set(self.elements) == set(
-                map(str, self.gap_repr.Elements())
+                self.gap_repr.Elements()
             ), "self.elements and self.gap_repr.Elements() don't match!"
             try:
                 gap_subgroups = [gap.Representative(c) for c in self.gap_repr.ConjugacyClassesSubgroups()]
@@ -299,12 +303,12 @@ class Group:
             itr = tqdm(gap_subgroups, desc="Computing orders")
         else:
             itr = gap_subgroups
-        # do trivial subgroups separately for efficiency
         gap_subgroups = [
             (str(gap.StructureDescription(g)).replace(' ', ''), g)
             for g in itr
             if g.Order() > 1 and g.Order() < len(self)
         ]
+        # do trivial subgroups separately for efficiency
         subgroups = {
             '1': frozenset([self.identity_idx()]), 
             self.gap_describe(): frozenset(range(len(self)))
@@ -315,7 +319,7 @@ class Group:
         else:
             itr = gap_subgroups
         for name, gap_subgroup in itr:
-            subgroup = frozenset([to_idx(str(elem)) for elem in gap_subgroup.Elements()])
+            subgroup = frozenset([to_idx(elem) for elem in gap_subgroup.Elements()])
             if subgroup not in set(subgroups.values()):
                 subgroups[f'{name}_{name_counts[name]}'] = subgroup
                 name_counts[name] += 1
@@ -377,7 +381,7 @@ class Group:
             d_count[dim] += 1
             M = [None] * len(self)
             for gap_elem in gap_group.Elements():
-                M[to_idx(str(gap_elem))] = t.tensor(
+                M[to_idx(gap_elem)] = t.tensor(
                     [
                         [to_complex(irrep.Image(gap_elem)[j][i]) for i in range(dim)]
                         for j in range(dim)

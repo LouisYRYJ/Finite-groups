@@ -22,12 +22,13 @@ else:
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
-    elements = list(range(N))
-    cayley_table = t.zeros((N, N), dtype=t.int64)
-    for i in range(N):
-        for j in range(N):
-            cayley_table[i, j] = (i + j) % N
-    return Group(elements, cayley_table)
+    return Group.from_gap(gap.CyclicGroup(N))
+    # elements = list(range(N))
+    # cayley_table = t.zeros((N, N), dtype=t.int64)
+    # for i in range(N):
+    #     for j in range(N):
+    #         cayley_table[i, j] = (i + j) % N
+    # return Group(elements, cayley_table)
 
 
 @jaxtyped(typechecker=beartype)
@@ -95,11 +96,17 @@ def semidirect_product(
 
 @jaxtyped(typechecker=beartype)
 def direct_product(group1: Group, group2: Group) -> Group:
-    ret = semidirect_product(group1, group2, lambda x: lambda y: y)
+    # Semidirect_product because it doesn't support gap_repr
     # TODO: compute gap_repr for general semidirect_product
-    if None not in [group1.gap_repr, group2.gap_repr]:
-        ret.gap_repr = gap.DirectProduct(group1.gap_repr, group2.gap_repr)
-    return ret
+    if group1.gap_repr is None or group2.gap_repr is None:
+        return semidirect_product(group1, group2, lambda x: lambda y: y)
+
+    gap_group = gap.DirectProduct(group1.gap_repr, group2.gap_repr)
+    elements = [
+        gap.DirectProductElement((a, b))
+        for b in group2.elements for a in group1.elements
+    ] # right-to-left lexicographic order
+    return Group.from_gap(gap_group, elements)
 
 times = direct_product
 
@@ -247,24 +254,30 @@ def abFam(a: int, b: int, r=None) -> Optional[list[Group]]:
     return [semidirect_product(base_group, Z(m), phi=phi) for phi in [phi_r, phi_s]]
 
 
+# def A(n: int) -> Group:
+#     return Group.from_sympy(AlternatingGroup(n))
+
+# def S(n: int) -> Group:
+#     # Construct this as semidirect prod of A(n) and Z/2
+#     # To have consistent labeling with A(n) x Z/2
+#     Sn = twisted(
+#         A(n),
+#         lambda p: Permutation(0, 1) * p * Permutation(0, 1),
+#         m=2,
+#     )
+#     Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
+#     return Sn
+
 def A(n: int) -> Group:
-    return Group.from_sympy(AlternatingGroup(n))
+    return Group.from_gap(gap.AlternatingGroup(n))
 
 def S(n: int) -> Group:
-    # Construct this as semidirect prod of A(n) and Z/2
-    # To have consistent labeling with A(n) x Z/2
-    Sn = twisted(
-        A(n),
-        lambda p: Permutation(0, 1) * p * Permutation(0, 1),
-        m=2,
-    )
-    Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
-    return Sn
-
-def gapS(n: int) -> Group:
-    # This is isomorphic to S(n), but comes with a gap_repr
-    # So it's much faster to do gap operations (subsets, irreps) on
-    return Group.from_gap(gap.SymmetricGroup(n))
+    # Set up element ordering to be consistent with A(n) x Z/2
+    alt_elem = list(gap.AlternatingGroup(n).Elements())
+    elements = alt_elem + [
+        x * gap.eval('(1, 2)') for x in alt_elem
+    ]
+    return Group.from_gap(gap.SymmetricGroup(n), elements)
 
 def P(p: int) -> Group:
     # Extra special group of order p^3 with exponent p
