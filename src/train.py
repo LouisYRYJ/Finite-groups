@@ -51,7 +51,7 @@ class Parameters:
     save_weights: bool = False
     save_losses: bool = False
     load_weights: str = ""
-    wandb: bool = True
+    no_wandb: bool = False
     thresh_grok: float = 0.95
     project: str = "group generalization"
     model: str = "MLP3"
@@ -67,7 +67,7 @@ def train(model, group_dataset, params):
     np.random.seed(params.seed)
     random.seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    if not params.wandb:
+    if params.no_wandb:
         os.environ["WANDB_MODE"] = "disabled"
         warnings.warn("Wandb is disabled!")
     if isinstance(params.name, Union[list, tuple]):
@@ -153,7 +153,7 @@ def train(model, group_dataset, params):
             json_str = json.dumps(dataclasses.asdict(params))
             f.write(json_str)
 
-    if params.wandb:
+    if not params.no_wandb:
         wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
