@@ -140,7 +140,7 @@ def test_loss(
             # loss_dict[f"G{i}_loss_{group.name}"] = loss
             # loss_dict[f"G{i}_acc_{group.name}"] = accuracy
 
-    return loss_dict
+    return dict(loss_dict)
 
 @jaxtyped(typechecker=beartype)
 def load_loss_trajectory(
