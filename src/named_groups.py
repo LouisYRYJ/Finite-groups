@@ -279,6 +279,14 @@ def S(n: int) -> Group:
     ]
     return Group.from_gap(gap.SymmetricGroup(n), elements)
 
+# A(n) and S(n) are also from gap and have compatible labelings, so there's no reason to use gapA and gapS
+# They're provided only for backwards compatibility with old models.
+
+gapA = A
+
+def gapS(n: int) -> Group:
+    return Group.from_gap(gap.SymmetricGroup(n))
+
 def P(p: int) -> Group:
     # Extra special group of order p^3 with exponent p
     return Group.from_gap(gap.ExtraspecialGroup(p**3, p))
