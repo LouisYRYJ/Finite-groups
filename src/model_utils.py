@@ -2,6 +2,7 @@
 from utils import *
 from model import *
 import copy
+import inspect
 
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
@@ -25,7 +26,13 @@ def load_model_paths(path, sel=None):
 
     with open(path + "/params.json", "r") as f:
         json_str = f.read()
-        params = Parameters(**json.loads(json_str))
+        params = json.loads(json_str)
+        sig = inspect.signature(Parameters)
+        for key in list(params.keys()):
+            if key not in sig.parameters:
+                print('WARNING: Removing unknown training parameter', key)
+                del params[key]
+        params = Parameters(**params)
 
     for root, dirs, files in os.walk(path + "/ckpts"):
         for filename in sorted(files, key=get_number_from_filename):
