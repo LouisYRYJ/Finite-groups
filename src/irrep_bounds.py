@@ -32,7 +32,6 @@ import time
 
 import sys, os, re
 
-STAB_THRESH = 0.2    # ||rho(x)b - b|| < STAB_THRESH -> b is stabilized by x
 CLUSTER_THRESH = 5e-3
 MAX_CLUSTERS = 2
 
@@ -76,6 +75,10 @@ def irrep_kmeans(
         rho_inv_X = einx.get_at('[group] n d, n [1] -> n d', rho_inv_X, rho_labels.unsqueeze(-1))
         for k in range(n_clusters):
             means[k] = rho_inv_X[k_labels == k].mean(dim=0)
+            # remove outliers
+            dists = (rho_inv_X[k_labels == k] - means[k]).norm(dim=-1)**2
+            std = dists.mean().sqrt()
+            means[k] = rho_inv_X[k_labels == k][dists <= 2*std].mean(dim=0)
             if t.isnan(means[k]).any():
                 means[k] = t.randn(irrep.shape[-1])
 
@@ -122,7 +125,7 @@ def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     }
     return irreps, irrep_idx_dict
 
-def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False, num_clusters=None):
+def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False, num_clusters=None, stab_thresh=0.3):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -263,12 +266,12 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
         for k in range(b_mean.shape[0]):
             full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
             id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
-            stab = (id_dist < STAB_THRESH).nonzero().flatten().tolist()
+            stab = (id_dist < stab_thresh).nonzero().flatten().tolist()
             b_mean[k] = full_b_mean[stab].mean(dim=0)
         for k in range(c_mean.shape[0]):
             full_c_mean = einops.einsum(irrep, c_mean[k], 'G d1 d2, d2 -> G d1')
             id_dist = (full_c_mean - full_c_mean[group.identity_idx()]).norm(dim=-1)
-            stab = (id_dist < STAB_THRESH).nonzero().flatten().tolist()
+            stab = (id_dist < stab_thresh).nonzero().flatten().tolist()
             c_mean[k] = full_c_mean[stab].mean(dim=0)
         b_hat = get_Xhat(irrep, b_mean, b_rho_labels, b_k_labels)
         c_hat = get_Xhat(irrep, c_mean, c_rho_labels, c_k_labels)
@@ -313,7 +316,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
     return vecs, max_avar
 
-def get_unif_vecs(group, irreps, vecs, verbose=False):
+def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
     # unif_vecs should count towards the timing of the verifier
     # (if provided by the interpretations string, it would all need to be checked anyways.)
     unif_vecs = dict()
@@ -345,9 +348,8 @@ def get_unif_vecs(group, irreps, vecs, verbose=False):
             for k in range(b_mean.shape[0]):
                 full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
-                stab = frozenset((id_dist < STAB_THRESH).nonzero().flatten().tolist())
+                stab = frozenset((id_dist < stab_thresh).nonzero().flatten().tolist())
                 if len(stab) < 5:
-                    print('SMALL STABILIZER!')
                     continue
                 left_cosets = group.get_cosets_idx(stab)
                 coset_prod = [(t.tensor(list(A)), t.tensor(list(B))) for A, B in product(left_cosets, repeat=2)]
@@ -387,10 +389,11 @@ def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat):
         un_hat.T @ un_hat,
         -un_hat.T @ un,
         ln_hat.T @ ln + rn_hat.T @ rn,
-        -ln_hat.T @ ln - rn_hat.T @ rn_hat,
+        -ln_hat.T @ ln_hat - rn_hat.T @ rn_hat,
     ]
     roots = np.roots(poly_coefs)
-    roots = roots[np.isreal(roots) & (np.abs(roots) > 1e-8)]
+    roots = roots[np.isreal(roots) & (np.abs(roots) > 1e-8)].real
+    
     obj = lambda a: ((a * un_hat - un).norm()**2 + ((1/a) * ln_hat - ln).norm()**2 + ((1/a) * rn_hat - rn).norm()**2).item()
     return min(roots, key=obj).real
             
