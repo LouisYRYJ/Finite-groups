@@ -72,7 +72,7 @@ def irrep_kmeans(
 
         # update means
         # TODO: check irrep is unitary
-        rho_inv_X = einops.einsum(irrep.mH, X, 'group d1 d2, n d2 -> group n d1')  # assume irrep is unitary
+        rho_inv_X = einops.einsum(irrep.mH, X, 'group d1 d2, n d2 -> group n d1')  # assume irrep is unitary so irrep.mH is inverse
         rho_inv_X = einx.get_at('[group] n d, n [1] -> n d', rho_inv_X, rho_labels.unsqueeze(-1))
         for k in range(n_clusters):
             means[k] = rho_inv_X[k_labels == k].mean(dim=0)
@@ -313,12 +313,14 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
     return vecs, max_avar
 
-def get_unif_vecs(group, irreps, vecs):
+def get_unif_vecs(group, irreps, vecs, verbose=False):
     # unif_vecs should count towards the timing of the verifier
     # (if provided by the interpretations string, it would all need to be checked anyways.)
     unif_vecs = dict()
     all_zeroed=True
     for name, (coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels) in vecs.items():
+        if verbose:
+            print('UNIF VECS', name)
         irrep = irreps[name]
         d_irrep = irreps[name].shape[-1]
         unif_coef = t.zeros_like(coef)
@@ -345,6 +347,7 @@ def get_unif_vecs(group, irreps, vecs):
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
                 stab = frozenset((id_dist < STAB_THRESH).nonzero().flatten().tolist())
                 if len(stab) < 5:
+                    print('SMALL STABILIZER!')
                     continue
                 left_cosets = group.get_cosets_idx(stab)
                 coset_prod = [(t.tensor(list(A)), t.tensor(list(B))) for A, B in product(left_cosets, repeat=2)]
@@ -360,17 +363,36 @@ def get_unif_vecs(group, irreps, vecs):
                         coef_mean = 0.
                         zeroed += 1
                         # print('ZEROING!', A, B)
-                # print(name, 'zeroed', zeroed, coef.shape[0], 'stab', len(stab))
+                if verbose:
+                    print(name, 'zeroed', zeroed, coef.shape[0], 'stab', len(stab))
                 if zeroed == 0:
                     all_zeroed = False
                 for A, B in coset_prod:
                     ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                     ij_sum = coef[ij_mask].sum()
                     unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
-            # print('coef', coef)
-            # print('unif_coef', unif_coef)
+            if verbose:
+                print('coef', coef)
+                print('unif_coef', unif_coef)
         unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef)
     return unif_vecs, all_zeroed
+
+def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat):
+    '''
+    Finds argmax_a |a^{-1} ln_hat - ln|^2 + |a^{-1} rn_hat - rn|^2 + |a un_hat - un|^2
+    Setting derivative to zero and multipling by a^3 gives a quartic polynomial.
+    '''
+    
+    poly_coefs = [
+        un_hat.T @ un_hat,
+        -un_hat.T @ un,
+        ln_hat.T @ ln + rn_hat.T @ rn,
+        -ln_hat.T @ ln - rn_hat.T @ rn_hat,
+    ]
+    roots = np.roots(poly_coefs)
+    roots = roots[np.isreal(roots) & (np.abs(roots) > 1e-8)]
+    obj = lambda a: ((a * un_hat - un).norm()**2 + ((1/a) * ln_hat - ln).norm()**2 + ((1/a) * rn_hat - rn).norm()**2).item()
+    return min(roots, key=obj).real
             
 @t.no_grad()
 def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False):
@@ -383,7 +405,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
     dead_neurons = set()
     for irrep_name, (coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef) in unif_vecs.items():
         if verbose:
-            print(irrep_name)
+            print('GET_IDEALIZED_MODEL', irrep_name)
         irrep_idxs = irrep_idx_dict[irrep_name]
         irrep = irreps[irrep_name]
         b = get_Xhat(irrep, b_mean, b_rho_labels, b_k_labels)
@@ -397,10 +419,13 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
             if irrep_un[:, i].abs().max() > 1e-8:
                 # degree of freedom in scaling u and l/r proportionally
                 # use this to match u to original norm
-                ucoef = t.dot(irrep_un[:,i], uneurons[:,irrep_idxs[i]]) / t.dot(irrep_un[:,i], irrep_un[:,i])
-                irrep_un[:, i] *= ucoef
-                irrep_ln[:, i] /= ucoef
-                irrep_rn[:, i] /= ucoef
+                # ucoef = t.dot(irrep_un[:,i], uneurons[:,irrep_idxs[i]]) / t.dot(irrep_un[:,i], irrep_un[:,i])
+                alpha = get_scale(lneurons[:,irrep_idxs[i]], irrep_ln[:,i], rneurons[:,irrep_idxs[i]], irrep_rn[:,i], uneurons[:,irrep_idxs[i]], irrep_un[:,i])
+                irrep_un[:, i] *= alpha
+                irrep_ln[:, i] /= alpha
+                irrep_rn[:, i] /= alpha
+                # if irrep_name=='5d-0' and (irrep_ln[:, i] - lneurons[:,irrep_idxs[i]]).norm()**2 > (lneurons[:,irrep_idxs[i]]).norm()**2:
+                #     import pdb; pdb.set_trace()
             else:
                 # un has been zeroed out in the preceding step
                 # more efficient to keep it the same and zero out l/r
