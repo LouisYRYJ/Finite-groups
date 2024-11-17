@@ -54,6 +54,7 @@ def irrep_kmeans(
     X: Float[t.Tensor, 'n d'],
     n_clusters: int,
     means: Any = None,
+    outlier_zscore: int= 2,
 ) -> Any:
     if means is None:
         means = t.randn(n_clusters, irrep.shape[-1])
@@ -76,9 +77,10 @@ def irrep_kmeans(
         for k in range(n_clusters):
             means[k] = rho_inv_X[k_labels == k].mean(dim=0)
             # remove outliers
-            dists = (rho_inv_X[k_labels == k] - means[k]).norm(dim=-1)**2
-            std = dists.mean().sqrt()
-            means[k] = rho_inv_X[k_labels == k][dists <= 2*std].mean(dim=0)
+            if outlier_zscore is not None:
+                dists = (rho_inv_X[k_labels == k] - means[k]).norm(dim=-1)**2
+                std = dists.mean().sqrt()
+                means[k] = rho_inv_X[k_labels == k][dists <= outlier_zscore * std].mean(dim=0)
             if t.isnan(means[k]).any():
                 means[k] = t.randn(irrep.shape[-1])
 
@@ -320,7 +322,7 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
     # unif_vecs should count towards the timing of the verifier
     # (if provided by the interpretations string, it would all need to be checked anyways.)
     unif_vecs = dict()
-    all_zeroed=True
+    zeroed_irreps = set()
     for name, (coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels) in vecs.items():
         if verbose:
             print('UNIF VECS', name)
@@ -345,6 +347,7 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
             unif_coef[mask01] = coef[mask01] * mean2 / coef[mask01].sum()
             unif_coef[mask10] = coef[mask10] * mean2 / coef[mask10].sum()
         else:
+            zeroed_irreps |= {name}
             for k in range(b_mean.shape[0]):
                 full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
@@ -368,7 +371,7 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
                 if verbose:
                     print(name, 'zeroed', zeroed, coef.shape[0], 'stab', len(stab))
                 if zeroed == 0:
-                    all_zeroed = False
+                    zeroed_irreps -= {name}
                 for A, B in coset_prod:
                     ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                     ij_sum = coef[ij_mask].sum()
@@ -377,7 +380,7 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
                 print('coef', coef)
                 print('unif_coef', unif_coef)
         unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef)
-    return unif_vecs, all_zeroed
+    return unif_vecs, zeroed_irreps
 
 def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat):
     '''
@@ -514,7 +517,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
     ln, rn, un = model.get_neurons(squeeze=True)
     ubias = model.unembed_bias.squeeze()
     try:
-        unif_vecs, all_zeroed = get_unif_vecs(group, irreps, vecs)
+        unif_vecs, zeroed_irreps = get_unif_vecs(group, irreps, vecs)
         ideal, cpct = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
     except AssertionError as e:
         print(e)
@@ -562,7 +565,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
     # print('bound time', t3 - t2)
     # print('irrep checks time', t4 - t3)
     # print('total time', t4 - t2 + t1 - t0)
-    return acc, t4 - t2 + t1 - t0, all_zeroed
+    return acc, t4 - t2 + t1 - t0, ideal, zeroed_irreps
 
 @t.no_grad()
 def naive_acc_bound(model, group):
