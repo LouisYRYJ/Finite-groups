@@ -236,13 +236,13 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
         b_k_labels = None
         best_err = 10000
         for tries in range(200):
-            # for num_clusters in ([num_clusters] if num_clusters is not None else range(1, MAX_CLUSTERS)):
-            cur_b_mean, cur_b_rho_labels, cur_b_k_labels,  err = irrep_kmeans(irrep, b, n_clusters=num_clusters)
-            if err < best_err:
-                best_err = err
-                b_mean = cur_b_mean
-                b_rho_labels = cur_b_rho_labels
-                b_k_labels = cur_b_k_labels
+            for num_clusters in ([num_clusters] if num_clusters is not None else range(1, MAX_CLUSTERS)):
+                cur_b_mean, cur_b_rho_labels, cur_b_k_labels,  err = irrep_kmeans(irrep, b, n_clusters=num_clusters)
+                if err < best_err:
+                    best_err = err
+                    b_mean = cur_b_mean
+                    b_rho_labels = cur_b_rho_labels
+                    b_k_labels = cur_b_k_labels
 
 
 
