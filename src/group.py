@@ -48,6 +48,9 @@ def is_complex(M, thresh=1e-10):
 # 2. It's basically always better to construct groups using Group.from_gap instead of __init__
 #    since the former populates Group.gap_repr, which GAP can operate on much faster (for finding subgroups, irreps, etc).
 #    (If there is no Group.gap_repr, then the cayley table needs to be converted into a finitely presented GAP object, which is very slow to work with.)
+# 3. Irreps are named like "3d-0" for a 3-dimensional irrep, with the number after the dash indicating the index of the irrep of that dimension.
+#    Irrep index is arbitrary, but is consistent between runs.
+#    NOTE: For S5, the paper has 1d-0 and 1d-1 swapped (in the code, 1d-1 is the trivial irrep) and 4d-0 and 4d-1 swapped (in the code, 4d-1 is the standard irrep.)
 
 class Group:
     """
