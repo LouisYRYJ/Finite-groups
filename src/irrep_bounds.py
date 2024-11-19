@@ -242,7 +242,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
         best_err = 10000
         for tries in range(200):
             # for num_clusters in ([num_clusters] if num_clusters is not None else range(1, MAX_CLUSTERS)):
-            cur_b_mean, cur_b_rho_labels, cur_b_k_labels,  err = irrep_kmeans(irrep, b, n_clusters=num_clusters)
+            cur_b_mean, cur_b_rho_labels, cur_b_k_labels,  err = irrep_kmeans(irrep, b, n_clusters=num_clusters if d_irrep > 1 else 1)
             if err < best_err:
                 best_err = err
                 b_mean = cur_b_mean
@@ -251,7 +251,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
 
 
-        c_mean, c_rho_labels, c_k_labels,  err = irrep_kmeans(irrep, c, n_clusters=num_clusters, means=-b_mean)
+        c_mean, c_rho_labels, c_k_labels,  err = irrep_kmeans(irrep, c, n_clusters=num_clusters if d_irrep > 1 else 1, means=-b_mean)
         # c_mean = None
         # c_rho_labels = None
         # c_k_labels = None
@@ -348,14 +348,23 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
             mask01 = (irrep[b_rho_labels].flatten() < 0) & (irrep[c_rho_labels].flatten() > 0)
             mask10 = (irrep[b_rho_labels].flatten() > 0) & (irrep[c_rho_labels].flatten() < 0)
             mask11 = (irrep[b_rho_labels].flatten() > 0) & (irrep[c_rho_labels].flatten() > 0)
-            mean1 = ((coef[mask00].sum() + coef[mask11].sum()) / 2).item()
-            mean2 = ((coef[mask01].sum() + coef[mask10].sum()) / 2).item()
+            if mask00.any() and mask11.any():
+                mean1 = ((coef[mask00].sum() + coef[mask11].sum()) / 2).item()
+            else:
+                mean1 = 0.
+            if mask01.any() and mask10.any():
+                mean2 = ((coef[mask01].sum() + coef[mask10].sum()) / 2).item()
+            else:
+                mean2 = 0.
             sign = 1. if b_mean[0] == c_mean[0] else -1.
             bias_coef -= sign * (mean1 - mean2)    # use bias to subtract out the extra rho(z) from single summation
             unif_coef[mask00] = coef[mask00] * mean1 / coef[mask00].sum()
             unif_coef[mask11] = coef[mask11] * mean1 / coef[mask11].sum()
             unif_coef[mask01] = coef[mask01] * mean2 / coef[mask01].sum()
             unif_coef[mask10] = coef[mask10] * mean2 / coef[mask10].sum()
+            if verbose:
+                print('coef', coef)
+                print('unif_coef', unif_coef)
         else:
             zeroed_irreps |= {name}
             for k, l in product(range(b_mean.shape[0]), range(c_mean.shape[0])):
