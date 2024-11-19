@@ -318,7 +318,17 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
     return vecs, max_avar
 
-def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
+def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
+    '''
+    Main idea: we're provided coefs and vecs (from get_neuron_vecs) comprising rho-set circuits
+    \sum_{b, c} coef_{b, c} b^T rho(z) c ReLU[b^T rho(x) a + a^T rho(y) b]
+    for this to be equivariant, we need coef_{b, c} to be constant across the summation.
+    We do this by setting each coef_{b, c} to the average over the summation.
+    Subtleties:
+        - multiple rho-sets corresponding to each rho; thus, we do this for each b_k_label and c_k_label
+        - possibly multiple neurons per (b, c) vec pair. we scale all neurons corresponding to each (b, c) by the same amount so that they sum to the average
+        - two vectors are the same in the rho-set if their rho_labels are in the same coset of the stabilizer
+    '''
     # unif_vecs should count towards the timing of the verifier
     # (if provided by the interpretations string, it would all need to be checked anyways.)
     unif_vecs = dict()
@@ -348,23 +358,26 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
             unif_coef[mask10] = coef[mask10] * mean2 / coef[mask10].sum()
         else:
             zeroed_irreps |= {name}
-            for k in range(b_mean.shape[0]):
+            for k, l in product(range(b_mean.shape[0]), range(c_mean.shape[0])):
+                # use b_mean to determine stabilizer
+                kl_mask = (b_k_labels == k) & (c_k_labels == l)
                 full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
                 stab = frozenset((id_dist < stab_thresh).nonzero().flatten().tolist())
                 if len(stab) < 5:
+                    coef[kl_mask] = 0.
                     continue
                 left_cosets = group.get_cosets_idx(stab)
                 coset_prod = [(t.tensor(list(A)), t.tensor(list(B))) for A, B in product(left_cosets, repeat=2)]
+                ij_mask = lambda A, B: t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
                 coef_sum = t.tensor([
-                    coef[(t.isin(b_rho_labels, A)) & (t.isin(c_rho_labels, B))].sum().item()
+                    coef[ij_mask(A, B) & kl_mask].sum().item()
                     for A, B in coset_prod
                 ])
                 coef_mean = coef_sum.mean()
                 zeroed = 0
                 for A, B in coset_prod:
-                    ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
-                    if not ij_mask.any():
+                    if not (ij_mask(A, B) & kl_mask).any():
                         coef_mean = 0.
                         zeroed += 1
                         # print('ZEROING!', A, B)
@@ -373,9 +386,9 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=0.3):
                 if zeroed == 0:
                     zeroed_irreps -= {name}
                 for A, B in coset_prod:
-                    ij_mask = t.isin(b_rho_labels, A) & t.isin(c_rho_labels, B)
-                    ij_sum = coef[ij_mask].sum()
-                    unif_coef[ij_mask] = coef[ij_mask] * coef_mean / ij_sum
+                    mask = ij_mask(A, B) & kl_mask
+                    ij_sum = coef[mask].sum()
+                    unif_coef[mask] = coef[mask] * coef_mean / ij_sum
             if verbose:
                 print('coef', coef)
                 print('unif_coef', unif_coef)
