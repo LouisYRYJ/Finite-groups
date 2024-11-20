@@ -127,7 +127,7 @@ def get_neuron_irreps(model, group, r2_thresh=0.95, norm_thresh=1e-2):
     }
     return irreps, irrep_idx_dict
 
-def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=False, num_clusters=None, stab_thresh=0.3):
+def get_neuron_vecs(model, group, irreps, irrep_idx_dict, verbose=False, num_clusters=None, stab_thresh=0.3):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
@@ -158,6 +158,8 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
         A_norm = t.linalg.matrix_norm(A)
         B_norm = t.linalg.matrix_norm(B)
+        if ((A_norm - B_norm).abs() / A_norm).max() > 1e-1:
+            print('A and B have different norm!')
 
         # Normalize A and B to have unit Frobenius norm
         A = A / A_norm.unsqueeze(1).unsqueeze(1)
@@ -318,7 +320,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, strict=True, verbose=F
 
     return vecs, max_avar
 
-def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
+def get_unif_vecs(group, irreps, vecs, irrep_idx_dict, total_neurons, verbose=False, stab_thresh=1e-2, bad_irrep_thresh=0.2, add_neurons=True):
     '''
     Main idea: we're provided coefs and vecs (from get_neuron_vecs) comprising rho-set circuits
     \sum_{b, c} coef_{b, c} b^T rho(z) c ReLU[b^T rho(x) a + a^T rho(y) b]
@@ -327,12 +329,15 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
     Subtleties:
         - multiple rho-sets corresponding to each rho; thus, we do this for each b_k_label and c_k_label
         - possibly multiple neurons per (b, c) vec pair. we scale all neurons corresponding to each (b, c) by the same amount so that they sum to the average
+        - possibly some (b, c) vec pairs are missing from the double summation.
+            - If missing pairs are more than half of total, zero out entire circuit
+            - If less, then add the missing pairs as new neurons. This requires modifying irrep_idx_dict to include these new neurons.
         - two vectors are the same in the rho-set if their rho_labels are in the same coset of the stabilizer
     '''
     # unif_vecs should count towards the timing of the verifier
     # (if provided by the interpretations string, it would all need to be checked anyways.)
     unif_vecs = dict()
-    zeroed_irreps = set()
+    bad_irreps = set()    # irreps for which a substantial subset of the double summation is missing
     for name, (coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels) in vecs.items():
         if verbose:
             print('UNIF VECS', name)
@@ -366,14 +371,14 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
                 print('coef', coef)
                 print('unif_coef', unif_coef)
         else:
-            zeroed_irreps |= {name}
+            bad_irreps |= {name}
             for k, l in product(range(b_mean.shape[0]), range(c_mean.shape[0])):
                 # use b_mean to determine stabilizer
                 kl_mask = (b_k_labels == k) & (c_k_labels == l)
                 full_b_mean = einops.einsum(irrep, b_mean[k], 'G d1 d2, d2 -> G d1')
                 id_dist = (full_b_mean - full_b_mean[group.identity_idx()]).norm(dim=-1)
                 stab = frozenset((id_dist < stab_thresh).nonzero().flatten().tolist())
-                if len(stab) < 5:
+                if len(stab) < 5:  # rho-set too big; just zero the whole circuit
                     coef[kl_mask] = 0.
                     continue
                 left_cosets = group.get_cosets_idx(stab)
@@ -384,16 +389,32 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
                     for A, B in coset_prod
                 ])
                 coef_mean = coef_sum.mean()
-                zeroed = 0
+                missing = set()
                 for A, B in coset_prod:
                     if not (ij_mask(A, B) & kl_mask).any():
-                        coef_mean = 0.
-                        zeroed += 1
+                        missing.add((A, B))
                         # print('ZEROING!', A, B)
+                rhoset_size = len(group) // len(stab)
                 if verbose:
-                    print(name, 'zeroed', zeroed, coef.shape[0], 'stab', len(stab))
-                if zeroed == 0:
-                    zeroed_irreps -= {name}
+                    print(name, f'missing {len(missing)}/{rhoset_size**2}=size^2. neuron count: {coef.shape[0]}')
+                if not(bad_irrep_thresh * rhoset_size**2 <= len(missing) <= (1 - bad_irrep_thresh) * rhoset_size**2):
+                    bad_irreps -= {name}
+                if len(missing) > 0.5 * rhoset_size**2 or not add_neurons:
+                    coef_mean = 0.
+                else:
+                    # add missing vec pairs to the sum
+                    if verbose:
+                        print(f'ADDING {len(missing)} NEURONS')
+                    for A, B in missing:
+                        irrep_idx_dict[name].append(total_neurons)
+                        coef = t.cat([coef, t.ones(1)])
+                        unif_coef = t.cat([unif_coef, t.zeros(1)])
+                        b_rho_labels = t.cat([b_rho_labels, t.tensor([A[0]])])
+                        c_rho_labels = t.cat([c_rho_labels, t.tensor([B[0]])])
+                        b_k_labels = t.cat([b_k_labels, t.tensor([k])])
+                        c_k_labels = t.cat([c_k_labels, t.tensor([l])])
+                        kl_mask = (b_k_labels == k) & (c_k_labels == l)
+                        total_neurons += 1
                 for A, B in coset_prod:
                     mask = ij_mask(A, B) & kl_mask
                     ij_sum = coef[mask].sum()
@@ -402,17 +423,17 @@ def get_unif_vecs(group, irreps, vecs, verbose=False, stab_thresh=1e-2):
                 print('coef', coef)
                 print('unif_coef', unif_coef)
         unif_vecs[name] = (unif_coef, a_mean, b_mean, c_mean, b_rho_labels, c_rho_labels, b_k_labels, c_k_labels, bias_coef)
-    return unif_vecs, zeroed_irreps
+    return unif_vecs, bad_irreps, irrep_idx_dict, total_neurons
 
-def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat):
+def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat, ucoef=1):
     '''
-    Finds argmax_a |a^{-1} ln_hat - ln|^2 + |a^{-1} rn_hat - rn|^2 + |a un_hat - un|^2
+    Finds argmax_a |a^{-1} ln_hat - ln|^2 + |a^{-1} rn_hat - rn|^2 + ucoef * |a un_hat - un|^2
     Setting derivative to zero and multipling by a^3 gives a quartic polynomial.
     '''
     
     poly_coefs = [
-        un_hat.T @ un_hat,
-        -un_hat.T @ un,
+        ucoef * un_hat.T @ un_hat,
+        ucoef * -un_hat.T @ un,
         ln_hat.T @ ln + rn_hat.T @ rn,
         -ln_hat.T @ ln_hat - rn_hat.T @ rn_hat,
     ]
@@ -423,11 +444,24 @@ def get_scale(ln, ln_hat, rn, rn_hat, un, un_hat):
     return min(roots, key=obj).real
             
 @t.no_grad()
-def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False):
+def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, total_neurons, verbose=False, ucoef=1):
     assert len(model) == 1, "model must be a single instance"
     if not isinstance(model, MLP4):
         model = model.fold_linear()
     lneurons, rneurons, uneurons = model.get_neurons(squeeze=True)
+    # unif_vecs may add new neurons
+    if verbose:
+        print('TOTAL NEURONS', total_neurons)
+    assert total_neurons >= lneurons.shape[-1]
+    orig_neurons = lneurons.shape[-1]
+    new_neurons = total_neurons - orig_neurons
+    if total_neurons > lneurons.shape[-1]:
+        lneurons = t.cat([lneurons, t.zeros(lneurons.shape[:-1] + (new_neurons,))], dim=-1)
+        rneurons = t.cat([rneurons, t.zeros(rneurons.shape[:-1] + (new_neurons,))], dim=-1)
+        uneurons = t.cat([uneurons, t.zeros(uneurons.shape[:-1] + (new_neurons,))], dim=-1)
+        model.embedding_left = nn.Parameter(lneurons.unsqueeze(0))
+        model.embedding_right = nn.Parameter(rneurons.unsqueeze(0))
+        model.unembedding = nn.Parameter(uneurons.mT.unsqueeze(0))
     new_ln, new_rn, new_un = t.zeros_like(lneurons), t.zeros_like(rneurons), t.zeros_like(uneurons)
     new_bias = t.zeros_like(model.unembed_bias.squeeze())
     dead_neurons = set()
@@ -448,7 +482,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
                 # degree of freedom in scaling u and l/r proportionally
                 # use this to match u to original norm
                 # ucoef = t.dot(irrep_un[:,i], uneurons[:,irrep_idxs[i]]) / t.dot(irrep_un[:,i], irrep_un[:,i])
-                alpha = get_scale(lneurons[:,irrep_idxs[i]], irrep_ln[:,i], rneurons[:,irrep_idxs[i]], irrep_rn[:,i], uneurons[:,irrep_idxs[i]], irrep_un[:,i])
+                alpha = get_scale(lneurons[:,irrep_idxs[i]], irrep_ln[:,i], rneurons[:,irrep_idxs[i]], irrep_rn[:,i], uneurons[:,irrep_idxs[i]], irrep_un[:,i], ucoef=ucoef)
                 irrep_un[:, i] *= alpha
                 irrep_ln[:, i] /= alpha
                 irrep_rn[:, i] /= alpha
@@ -467,7 +501,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
         new_ln[:,irrep_idxs] = irrep_ln
         new_rn[:,irrep_idxs] = irrep_rn
         new_un[:,irrep_idxs] = irrep_un
-        # Hardcoded ideal bias for sign rnep
+        # Hardcoded ideal bias for sign rep
         if abs(bias_coef) > 1e-8:
             assert irreps[irrep_name].shape[-1] == 1, 'Only 1d irrep supported for bias'
             new_bias += irreps[irrep_name].squeeze() * bias_coef
@@ -500,7 +534,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
     cpct.embedding_right = nn.Parameter(new_rn[:,live_neurons].unsqueeze(0))
     cpct.unembedding = nn.Parameter(new_un[:,live_neurons].unsqueeze(0).mT)
     cpct.unembed_bias = nn.Parameter(new_bias.unsqueeze(0))
-    return ideal, cpct
+    return ideal, cpct, model  # original model might have some zeros appended to have same shape as ideal
 
 # def model_dist_parted(model1, model2, irrep_idx_dict, vecs):
 #     assert len(model1) == 1 and len(model2) == 1, "must be single instances"
@@ -531,16 +565,18 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, verbose=False)
 #     return M
 
 @t.no_grad()
-def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
+def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose=False):
     assert len(model) == 1, "model must be a single instance"
     t0 = time.time()
     if not isinstance(model, MLP4):
         model = model.fold_linear()
     ln, rn, un = model.get_neurons(squeeze=True)
+    if model.unembed_bias is None:
+        model.unembed_bias = nn.Parameter(t.zeros(1, len(group)))
     ubias = model.unembed_bias.squeeze()
     try:
-        unif_vecs, zeroed_irreps = get_unif_vecs(group, irreps, vecs)
-        ideal, cpct = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs)
+        unif_vecs, bad_irreps, irrep_idx_dict, total_neurons = get_unif_vecs(group, irreps, vecs, irrep_idx_dict, total_neurons=ln.shape[-1], verbose=verbose)
+        ideal, cpct, model = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, total_neurons, ucoef=ucoef, verbose=verbose)
     except AssertionError as e:
         print(e)
         return 0., time.time() - t0, True
@@ -587,7 +623,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs):
     # print('bound time', t3 - t2)
     # print('irrep checks time', t4 - t3)
     # print('total time', t4 - t2 + t1 - t0)
-    return acc, t4 - t2 + t1 - t0, ideal, zeroed_irreps
+    return acc, t4 - t2 + t1 - t0, ideal, bad_irreps
 
 @t.no_grad()
 def naive_acc_bound(model, group):

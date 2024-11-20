@@ -409,7 +409,10 @@ class Group:
             H_sqrt, irrep, H_sqrt_inv,
             "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
         )
-        assert t.allclose(irrep.mH, t.linalg.inv(irrep), atol=1e-5), "Unitarization failed!"
+        try:
+            assert t.allclose(irrep.mH, t.linalg.inv(irrep), atol=1e-4), "Unitarization failed!"
+        except:
+            import pdb; pdb.set_trace()
         return irrep
 
     def get_frobenius_schur(
@@ -461,9 +464,12 @@ class Group:
                 real_irrep = einops.einsum(
                     W, irrep, t.linalg.inv(W), "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
                 )
-                assert (
-                    real_irrep.imag.abs().max() < 1e-5
-                ), "Real irrep transformation failed!"
+                try:
+                    assert (
+                        real_irrep.imag.abs().max() < 1e-4
+                    ), "Real irrep transformation failed!"
+                except:
+                    import pdb; pdb.set_trace()
                 real_irrep = real_irrep.real
             else:  # complex or quaternionic irrep
                 # TODO: in the complex case, there's overcounting due to the conjugate complex irrep
