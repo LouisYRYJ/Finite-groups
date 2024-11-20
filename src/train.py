@@ -154,7 +154,7 @@ def train(model, group_dataset, params):
             f.write(json_str)
 
     if params.wandb:
-        params.watch(model, log="all", log_freq=10)
+        wandb.watch(model, log="all", log_freq=10)
     epoch_train_loss = t.zeros(params.instances, device=device)
     epoch_train_acc = t.zeros(params.instances, device=device)
     epoch_train_margin = t.full((params.instances,), np.inf, device=device)
