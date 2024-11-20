@@ -384,9 +384,10 @@ class Group:
             d_count[dim] += 1
             M = [None] * len(self)
             for gap_elem in gap_group.Elements():
+                image = irrep.Image(gap_elem)
                 M[to_idx(gap_elem)] = t.tensor(
                     [
-                        [to_complex(irrep.Image(gap_elem)[j][i]) for i in range(dim)]
+                        [to_complex(image[j][i]) for i in range(dim)]
                         for j in range(dim)
                     ]
                 )
