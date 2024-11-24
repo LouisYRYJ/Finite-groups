@@ -565,7 +565,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, total_neurons,
 #     return M
 
 @t.no_grad()
-def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose=False):
+def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose=False, do_ce=False):
     assert len(model) == 1, "model must be a single instance"
     t0 = time.time()
     if not isinstance(model, MLP4):
@@ -606,7 +606,13 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose
         orig_correct_logits.append(un[z].dot(act) + ubias[z])
     errs = model_dist_xy(model, ideal, 'inf')
     # import pdb; pdb.set_trace()
-    acc = (t.tensor(errs) < margin + t.tensor(orig_correct_logits) - ideal_correct_logit).float().mean().item()
+    if do_ce:
+        # this is a bound on cross-entropy
+        # but too lazy to rename the variable
+        acc = margin + t.tensor(orig_correct_logits) - ideal_correct_logit - t.tensor(errs)
+        acc = -t.log(t.exp(acc) / (t.exp(acc) + len(group) - 1)).mean().item()
+    else:
+        acc = (t.tensor(errs) < margin + t.tensor(orig_correct_logits) - ideal_correct_logit).float().mean().item()
     t3 = time.time()
     # check irreps
     # this is |G|^2d^3 time complexity, which is unnecessarily wasteful.
@@ -626,7 +632,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose
     return acc, t4 - t2 + t1 - t0, ideal, bad_irreps
 
 @t.no_grad()
-def naive_acc_bound(model, group):
+def naive_acc_bound(model, group, do_ce=False):
     # Do this untensorized for a fair comparison with irrep_acc_bound
     # TODO: tensorize irrep_acc_bound
     t0 = time.time()
@@ -636,7 +642,10 @@ def naive_acc_bound(model, group):
     for i, j in product(range(len(group)), repeat=2):
         out = model(t.tensor([[i, j]])).flatten()
         label = group.mult_idx(i, j)
-        corrects.append((out.argmax() == label).int().item())
+        if do_ce:
+            corrects.append(-F.log_softmax(out)[label].item())
+        else:
+            corrects.append((out.argmax() == label).int().item())
     acc = np.mean(corrects).item()
     t1 = time.time()
     return acc, t1 - t0
