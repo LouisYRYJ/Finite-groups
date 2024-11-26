@@ -158,7 +158,7 @@ def get_neuron_vecs(model, group, irreps, irrep_idx_dict, verbose=False, num_clu
 
         A_norm = t.linalg.matrix_norm(A)
         B_norm = t.linalg.matrix_norm(B)
-        if ((A_norm - B_norm).abs() / A_norm).max() > 1e-1:
+        if verbose and ((A_norm - B_norm).abs() / A_norm).max() > 1e-1:
             print('A and B have different norm!')
 
         # Normalize A and B to have unit Frobenius norm
@@ -399,7 +399,7 @@ def get_unif_vecs(group, irreps, vecs, irrep_idx_dict, total_neurons, verbose=Fa
                     print(name, f'missing {len(missing)}/{rhoset_size**2}=size^2. neuron count: {coef.shape[0]}')
                 if not(bad_irrep_thresh * rhoset_size**2 <= len(missing) <= (1 - bad_irrep_thresh) * rhoset_size**2):
                     bad_irreps -= {name}
-                if len(missing) > 0.5 * rhoset_size**2 or not add_neurons:
+                if len(missing) > 0.5 * rhoset_size**2 or (len(missing) > 0 and not add_neurons):
                     coef_mean = 0.
                 else:
                     # add missing vec pairs to the sum
@@ -565,7 +565,7 @@ def get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, total_neurons,
 #     return M
 
 @t.no_grad()
-def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose=False, do_ce=False):
+def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose=False, do_ce=False, add_neurons=True):
     assert len(model) == 1, "model must be a single instance"
     t0 = time.time()
     if not isinstance(model, MLP4):
@@ -575,7 +575,7 @@ def irrep_acc_bound(model, group, irreps, irrep_idx_dict, vecs, ucoef=1, verbose
         model.unembed_bias = nn.Parameter(t.zeros(1, len(group)))
     ubias = model.unembed_bias.squeeze()
     try:
-        unif_vecs, bad_irreps, irrep_idx_dict, total_neurons = get_unif_vecs(group, irreps, vecs, irrep_idx_dict, total_neurons=ln.shape[-1], verbose=verbose)
+        unif_vecs, bad_irreps, irrep_idx_dict, total_neurons = get_unif_vecs(group, irreps, vecs, irrep_idx_dict, total_neurons=ln.shape[-1], verbose=verbose, add_neurons=add_neurons)
         ideal, cpct, model = get_idealized_model(model, irreps, irrep_idx_dict, unif_vecs, total_neurons, ucoef=ucoef, verbose=verbose)
     except AssertionError as e:
         print(e)
