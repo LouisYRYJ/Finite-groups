@@ -29,6 +29,7 @@ if os.path.isdir(GAP_ROOT):
 
     gap.eval('LoadPackage("SmallGrp");')
     gap.eval('LoadPackage("TransGrp");')
+    gap.eval('LoadPackage("PrimGrp");')
 else:
     print("WARNING: GAP is not installed!")
 
