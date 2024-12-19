@@ -115,7 +115,7 @@ class InstancedModule(ABC, nn.Module):
         ret = deepcopy(self)
         for name, param in self.named_parameters():
             sliced_param = param[slice]
-            if isinstance(slice, int):
+            if isinstance(slice, int) or (isinstance(slice, t.Tensor) and slice.numel() == 1):
                 sliced_param = sliced_param.unsqueeze(0)
             setattr(ret, name, nn.Parameter(sliced_param.clone()))
         return ret
