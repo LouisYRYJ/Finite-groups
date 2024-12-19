@@ -174,7 +174,7 @@ def train(model, group_dataset, params):
                 log_dict[f"{k}_max"] = loss_dict[k].max().item()
                 log_dict[f"{k}_min"] = loss_dict[k].min().item()
             for inst in range(params.instances):
-                log_dict[f'weight_norm_{inst:03d}'] = weight_norm(model[i])
+                log_dict[f'weight_norm_{inst:03d}'] = weight_norm(model[inst])
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
                 log_dict[f"G{i}_grokked"] = (
