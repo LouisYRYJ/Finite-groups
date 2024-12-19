@@ -22,6 +22,7 @@ import re
 import warnings
 import sys
 import pathlib
+from model_utils import weight_norm
 
 ROOT = pathlib.Path(__file__).parent.parent.resolve()  # repo root
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -172,6 +173,8 @@ def train(model, group_dataset, params):
                 log_dict[f"{k}_median"] = loss_dict[k].median().item()
                 log_dict[f"{k}_max"] = loss_dict[k].max().item()
                 log_dict[f"{k}_min"] = loss_dict[k].min().item()
+            for inst in range(params.instances):
+                log_dict[f'weight_norm_{inst:03d}'] = weight_norm(model[i])
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
                 log_dict[f"G{i}_grokked"] = (
