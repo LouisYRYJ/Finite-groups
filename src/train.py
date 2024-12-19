@@ -63,9 +63,6 @@ class Parameters:
 def train(model, group_dataset, params):
     if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
-    t.manual_seed(params.seed)
-    np.random.seed(params.seed)
-    random.seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     if not params.wandb:
         os.environ["WANDB_MODE"] = "disabled"
@@ -256,6 +253,9 @@ def parse() -> Parameters:
 
 if __name__ == "__main__":
     params = parse()
+    t.manual_seed(params.seed)
+    np.random.seed(params.seed)
+    random.seed(params.seed)
     group_dataset = GroupData(params=params)
     model = MODEL_DICT[params.model](params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)
