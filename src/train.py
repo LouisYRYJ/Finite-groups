@@ -22,6 +22,7 @@ import re
 import warnings
 import sys
 import pathlib
+from model_utils import weight_norm
 
 ROOT = pathlib.Path(__file__).parent.parent.resolve()  # repo root
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -63,9 +64,6 @@ class Parameters:
 def train(model, group_dataset, params):
     if params.load_weights:
         model.load_state_dict(t.load(params.load_weights))
-    t.manual_seed(params.seed)
-    np.random.seed(params.seed)
-    random.seed(params.seed)
     current_time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     if not params.wandb:
         os.environ["WANDB_MODE"] = "disabled"
@@ -175,6 +173,8 @@ def train(model, group_dataset, params):
                 log_dict[f"{k}_median"] = loss_dict[k].median().item()
                 log_dict[f"{k}_max"] = loss_dict[k].max().item()
                 log_dict[f"{k}_min"] = loss_dict[k].min().item()
+            for inst in range(params.instances):
+                log_dict[f'weight_norm_{inst:03d}'] = weight_norm(model[inst])
             for i, group in enumerate(group_dataset.groups):
                 # TODO: Move into utils.py test_loss()
                 log_dict[f"G{i}_grokked"] = (
@@ -256,6 +256,9 @@ def parse() -> Parameters:
 
 if __name__ == "__main__":
     params = parse()
+    t.manual_seed(params.seed)
+    np.random.seed(params.seed)
+    random.seed(params.seed)
     group_dataset = GroupData(params=params)
     model = MODEL_DICT[params.model](params=params).to(device)
     train(model=model, group_dataset=group_dataset, params=params)

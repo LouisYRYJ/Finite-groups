@@ -89,3 +89,6 @@ def ablate_idx_loss(model, idxs):
     ln, rn, un = ln.squeeze(0).to('cpu'), rn.squeeze(0).to('cpu'), un.squeeze(0).to('cpu').T
     ln, rn, un = ln[:, idxs], rn[:, idxs], un[:, idxs]
     return ablate_loss(ln, rn, un)
+
+def weight_norm(model):
+    return sum([t.norm(p) for p in model.parameters()]).item()
