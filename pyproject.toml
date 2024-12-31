@@ -23,6 +23,7 @@ huggingface-hub = "^0.24.6"
 einx = "^0.3.0"
 tqdm = "^4.67.0"
 gappy-system = {git = "https://github.com/wiwu2390/gappy.git"}
+torchopt = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"
