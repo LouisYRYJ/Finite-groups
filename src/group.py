@@ -20,17 +20,8 @@ from sympy.combinatorics import PermutationGroup, Permutation
 import einops
 import numpy as np
 
-ROOT = pathlib.Path(__file__).parent.parent.resolve()
-GAP_ROOT = "/usr/share/gap"
-if os.path.isdir(GAP_ROOT):
-    os.environ["GAP_ROOT"] = GAP_ROOT
-    from gappy import gap
-    from gappy.gapobj import GapObj
-
-    gap.eval('LoadPackage("SmallGrp");')
-    gap.eval('LoadPackage("TransGrp");')
-else:
-    print("WARNING: GAP is not installed!")
+from gappy import gap
+from gappy.gapobj import GapObj
 
 
 # TODO: Move to utils or smth
@@ -221,7 +212,9 @@ class Group:
                 power, fp_elem = get_power(fp_elem)
                 return int(token) - 1, power, fp_elem  # GAP is 1-indexed
             else:
-                import pdb; pdb.set_trace()
+                import pdb
+
+                pdb.set_trace()
 
         stack = [self.identity_idx()]
         while fp_elem:
@@ -245,9 +238,9 @@ class Group:
         return self.idx_to_elem(self.fp_elem_to_idx(fp_elem))
 
     def form_subgroup(self, elements):
-        '''
+        """
         Subset of self.elements -> subgroup Group object
-        '''
+        """
         assert set(elements).issubset(set(self.elements))
         N = len(elements)
         table = t.zeros((N, N), dtype=t.int64)
@@ -256,7 +249,9 @@ class Group:
         return Group(elements, table)
 
     @lru_cache(maxsize=None)
-    def get_subgroups_idx(self, cache_dir=None, conjugates=True, verbose=True) -> dict[frozenset]:
+    def get_subgroups_idx(
+        self, cache_dir=None, conjugates=True, verbose=True
+    ) -> dict[frozenset]:
         """
         Return set of all subgroups of the group
         """
@@ -282,9 +277,14 @@ class Group:
                 map(str, self.gap_repr.Elements())
             ), "self.elements and self.gap_repr.Elements() don't match!"
             try:
-                gap_subgroups = [gap.Representative(c) for c in self.gap_repr.ConjugacyClassesSubgroups()]
+                gap_subgroups = [
+                    gap.Representative(c)
+                    for c in self.gap_repr.ConjugacyClassesSubgroups()
+                ]
             except:
-                import pdb; pdb.set_trace()
+                import pdb
+
+                pdb.set_trace()
             to_idx = self.elem_to_idx
 
         if verbose:
@@ -293,13 +293,13 @@ class Group:
             itr = gap_subgroups
         # do trivial subgroups separately for efficiency
         gap_subgroups = [
-            (str(gap.StructureDescription(g)).replace(' ', ''), g)
+            (str(gap.StructureDescription(g)).replace(" ", ""), g)
             for g in itr
             if g.Order() > 1 and g.Order() < len(self)
         ]
         subgroups = {
-            '1': frozenset([self.identity_idx()]), 
-            self.gap_describe(): frozenset(range(len(self)))
+            "1": frozenset([self.identity_idx()]),
+            self.gap_describe(): frozenset(range(len(self))),
         }
         name_counts = defaultdict(lambda: 0)
         if verbose:
@@ -307,20 +307,22 @@ class Group:
         else:
             itr = gap_subgroups
         for name, gap_subgroup in itr:
-            subgroup = frozenset([to_idx(str(elem)) for elem in gap_subgroup.Elements()])
+            subgroup = frozenset(
+                [to_idx(str(elem)) for elem in gap_subgroup.Elements()]
+            )
             if subgroup not in set(subgroups.values()):
-                subgroups[f'{name}_{name_counts[name]}'] = subgroup
+                subgroups[f"{name}_{name_counts[name]}"] = subgroup
                 name_counts[name] += 1
 
             if conjugates:
                 for g in range(len(self)):
                     conjugate = frozenset(self.get_conj_subgroup_idx(subgroup, g))
                     if conjugate not in set(subgroups.values()):
-                        subgroups[f'{name}_{name_counts[name]}'] = conjugate
+                        subgroups[f"{name}_{name_counts[name]}"] = conjugate
                         name_counts[name] += 1
 
         if all(count <= 1 for count in name_counts.values()):
-            subgroups = {k.split('_')[0]: v for k, v in subgroups.items()}
+            subgroups = {k.split("_")[0]: v for k, v in subgroups.items()}
 
         if cache_path is not None:
             print("Saving to", cache_path)
@@ -391,10 +393,11 @@ class Group:
         H_sqrt = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)
         H_sqrt_inv = t.linalg.inv(H_sqrt)
         irrep = einops.einsum(
-            H_sqrt, irrep, H_sqrt_inv,
-            "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
+            H_sqrt, irrep, H_sqrt_inv, "d0 d1, n d1 d2, d2 d3 -> n d0 d3"
         )
-        assert t.allclose(irrep.mH, t.linalg.inv(irrep), atol=1e-5), "Unitarization failed!"
+        assert t.allclose(
+            irrep.mH, t.linalg.inv(irrep), atol=1e-5
+        ), "Unitarization failed!"
         return irrep
 
     def get_frobenius_schur(
@@ -436,11 +439,15 @@ class Group:
                     H = t.randn((d, d), dtype=irrep.dtype)
                     S = (t.linalg.inv(t.conj(irrep)) @ H @ irrep).mean(dim=0)
                     if tries > max_tries:
-                        assert False, f"Exceeded {max_tries} tries without finding nonzero symmetric S"
+                        assert (
+                            False
+                        ), f"Exceeded {max_tries} tries without finding nonzero symmetric S"
                     tries += 1
                 S = (S + S.T) / 2
                 S /= (S @ S.H).diag().mean().sqrt()
-                assert t.allclose(S @ S.H, t.eye(d, dtype=S.dtype), atol=1e-5), "S is not unitary!"
+                assert t.allclose(
+                    S @ S.H, t.eye(d, dtype=S.dtype), atol=1e-5
+                ), "S is not unitary!"
                 L, V = t.linalg.eig(S)
                 W = V @ t.diag(L.sqrt()) @ t.linalg.inv(V)  # sqrt of S
                 real_irrep = einops.einsum(
@@ -462,7 +469,9 @@ class Group:
                 )
                 d = real_irrep.shape[-1]
                 if verbose:
-                    print(f'Complex irrep {complex_name} -> real irrep {d}d-{d_count[d]}')
+                    print(
+                        f"Complex irrep {complex_name} -> real irrep {d}d-{d_count[d]}"
+                    )
             d = real_irrep.shape[-1]
             real_irreps[f"{d}d-{d_count[d]}"] = real_irrep
             d_count[d] += 1
@@ -476,7 +485,9 @@ class Group:
 
     # for convenience
     def get_irreps(self, real=False, verbose=True):
-        return self.get_real_irreps(verbose=verbose) if real else self.get_complex_irreps()
+        return (
+            self.get_real_irreps(verbose=verbose) if real else self.get_complex_irreps()
+        )
 
     @lru_cache(maxsize=None)
     def gap_describe(self) -> str:
@@ -484,7 +495,7 @@ class Group:
             gap.StructureDescription(
                 self.gap_repr if self.gap_repr is not None else self.to_gap_fp()
             )
-        ).replace(' ', '')
+        ).replace(" ", "")
 
     # @staticmethod
     # def from_model(
@@ -594,10 +605,14 @@ class Group:
         """
         cosets = set()
         for i in range(len(self)):
-            cosets.add(frozenset([
-                self.mult_idx(a, self.mult_idx(i, b))
-                for a, b in product(subgroup1, subgroup2)
-            ]))
+            cosets.add(
+                frozenset(
+                    [
+                        self.mult_idx(a, self.mult_idx(i, b))
+                        for a, b in product(subgroup1, subgroup2)
+                    ]
+                )
+            )
         return list(cosets)
 
     @lru_cache(maxsize=None)
@@ -666,9 +681,9 @@ class Group:
         return t.complex(snap(chars.real), snap(chars.imag))
 
     def get_permutation_idx(self, subgroup):
-        '''
+        """
         Given subgroup H, returns permutation matrices (G, G/H, G/H) corresponding to left action of G on H
-        '''
+        """
         cosets = list(self.get_cosets_idx(subgroup))
         perm_all = []
         for g in range(len(self)):

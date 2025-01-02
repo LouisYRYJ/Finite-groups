@@ -10,15 +10,9 @@ from sympy.combinatorics import PermutationGroup, Permutation
 from sympy.combinatorics.named_groups import AlternatingGroup
 import math
 
-ROOT = pathlib.Path(__file__).parent.parent.resolve()
-GAP_ROOT = "/usr/share/gap"
-if os.path.isdir(GAP_ROOT):
-    os.environ["GAP_ROOT"] = GAP_ROOT
-    from gappy import gap
-    from gappy.gapobj import GapObj
-    gap.eval('LoadPackage("SmallGrp");')
-else:
-    print("WARNING: GAP is not installed!")
+from gappy import gap
+from gappy.gapobj import GapObj
+
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
@@ -101,7 +95,9 @@ def direct_product(group1: Group, group2: Group) -> Group:
         ret.gap_repr = gap.DirectProduct(group1.gap_repr, group2.gap_repr)
     return ret
 
+
 times = direct_product
+
 
 @jaxtyped(typechecker=beartype)
 def Z(*args: int) -> Group:
@@ -113,12 +109,13 @@ def Z(*args: int) -> Group:
         group = direct_product(group, cyclic(arg))
     return group
 
+
 @jaxtyped(typechecker=beartype)
 def B(n: int) -> Group:
     """
     Convenience function for Boolean hypercube.
     """
-    return Z(*(2,)*n)
+    return Z(*(2,) * n)
 
 
 @jaxtyped(typechecker=beartype)
@@ -135,21 +132,24 @@ def twisted(group: Group, automorphism: Callable[..., Any], m: int = 2) -> Group
 
     return semidirect_product(group, cyclic(m), phi)
 
+
 def autZ(n: int) -> Group:
-    '''
+    """
     Multiplicative group of Z(n), i.e. Aut(Z(n)).
     Has order phi(n), where phi is the Euler totient function.
-    '''
+    """
     elements = [i for i in range(1, n) if math.gcd(i, n) == 1]
     mult = lambda a, b: (a * b) % n
     return Group.from_func(elements, mult)
 
+
 def holZ(n: int) -> Group:
-    '''
+    """
     The holomorph of Z(n), which has order n*phi(n), where phi is the Euler totient function.
-    '''
+    """
     phi = lambda a, n=n: lambda b, n=n: (a * b) % n
     return semidirect_product(Z(n), autZ(n), phi)
+
 
 @jaxtyped(typechecker=beartype)
 def D(N: int) -> Group:
@@ -250,6 +250,7 @@ def abFam(a: int, b: int, r=None) -> Optional[list[Group]]:
 def A(n: int) -> Group:
     return Group.from_sympy(AlternatingGroup(n))
 
+
 def S(n: int) -> Group:
     # Construct this as semidirect prod of A(n) and Z/2
     # To have consistent labeling with A(n) x Z/2
@@ -261,14 +262,17 @@ def S(n: int) -> Group:
     Sn.elements = [n * Permutation(0, 1) if h else n for n, h in Sn.elements]
     return Sn
 
+
 def gapS(n: int) -> Group:
     # This is isomorphic to S(n), but comes with a gap_repr
     # So it's much faster to do gap operations (subsets, irreps) on
     return Group.from_gap(gap.SymmetricGroup(n))
 
+
 def P(p: int) -> Group:
     # Extra special group of order p^3 with exponent p
     return Group.from_gap(gap.ExtraspecialGroup(p**3, p))
+
 
 def smallgrp(N: int, idx: int) -> Group:
     return Group.from_gap(gap.SmallGroup(N, idx))

@@ -1,0 +1,22 @@
+name: so-gappy
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  ## Python Core
+  - python=3.10
+  - pip
+
+  ## compiler tools
+  - autoconf
+  - c-compiler
+  - cython
+
+  ## gappy deps
+  - gap-defaults=4.11
+  - cysignals
+  - psutil
+
+  ## PyPI pkgs
+  - pip:
+    - gappy-system

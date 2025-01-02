@@ -7,7 +7,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-torch = "^2.3.1"
 wandb = "^0.17.4"
 devinterp = "^0.2.2"
 jaxtyping = "^0.2.31"
