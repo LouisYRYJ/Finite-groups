@@ -98,7 +98,7 @@ def train(model, group_dataset, params):
     )
 
     if params.optimizer == "sgd":
-        optimizer = t.optim.SGD(model.parameters(), lr=params.lr)
+        optimizer = t.optim.SGD(model.parameters(), lr=params.lr, weight_decay=params.weight_decay)
     # lower learning rate for unembed, following tensor programs V
     # unembed_params = {
     #     'params': [p for name, p in model.named_parameters() if 'unembed' in name],
