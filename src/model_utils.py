@@ -92,7 +92,7 @@ def ablate_idx_loss(model, idxs):
 
 def weight_norm(model):
     # Don't reduce along instance dimension
-    ret = sum([t.norm(p, dim=tuple(range(1, len(p.shape)))) for p in model.parameters()]).squeeze(0)
+    ret = sum([t.norm(p, dim=tuple(range(1, len(p.shape))))**2 for p in model.parameters()]).squeeze(0).sqrt()
     if ret.numel() == 1:
         return ret.item()
     return ret
