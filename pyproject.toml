@@ -2,8 +2,8 @@
 name = "group addition"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -23,8 +23,8 @@ huggingface-hub = "^0.24.6"
 einx = "^0.3.0"
 tqdm = "^4.67.0"
 gappy-system = {git = "https://github.com/wiwu2390/gappy.git"}
-jax = {extras = ["cuda12"], version = "^0.4.38"}
-flax = "^0.10.2"
+# jax = {extras = ["cuda12"], version = "^0.4.38"}
+# flax = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"
