@@ -90,10 +90,51 @@ def ablate_idx_loss(model, idxs):
     ln, rn, un = ln[:, idxs], rn[:, idxs], un[:, idxs]
     return ablate_loss(ln, rn, un)
 
-def weight_norm(model):
+def weight_norm(model, p=2, separate_params=False):
     # Don't reduce along instance dimension
-    ret = sum([t.norm(p, dim=tuple(range(1, len(p.shape))))**2 for p in model.parameters()]).squeeze(0).sqrt()
+    if separate_params:
+        # Sum norm over each separate param matrix
+        # This is used in Hu et al "Latent state models of training dynamics"
+        ret = sum([t.norm(param, p=p, dim=tuple(range(1, len(param.shape)))) for param in model.parameters()])
+    else:
+        ret = sum([t.norm(param, p=p, dim=tuple(range(1, len(param.shape))))**p for param in model.parameters()]).pow(1/p)
     if ret.numel() == 1:
         return ret.item()
+    return ret
+
+def get_hmm_metrics(model):
+    # See Appendix B of Hu et al "Latent state models of training dynamics"
+    weights = [p for n, p in model.named_parameters() if 'bias' not in n]
+    biases = [p for n, p in model.named_parameters() if 'bias' in n]
+    # don't flatten instance dimension
+    concat_weights = t.cat([p.flatten(start_dim=1) for p in weights], dim=1)
+    concat_biases = t.cat([p.flatten(start_dim=1) for p in biases], dim=1)
+    mean = lambda l: sum(l) / len(l)   # easier than concat to tensor then mean over dim
+    non_inst_dim = lambda p: tuple(range(1, len(p.shape)))
+    l1s = [p.norm(p=1, dim=non_inst_dim(p)) for p in weights]
+    l2s = [p.norm(p=2, dim=non_inst_dim(p)) for p in weights]
+    l1_l2s = [l1 / l2 for l1, l2 in zip(l1s, l2s)]
+    traces = [einops.einsum(p[:, :min(p.shape[1], p.shape[2]), :min(p.shape[1], p.shape[2])], 'inst i i -> inst') for p in weights]
+    opnorms = [t.linalg.matrix_norm(p, ord=2) for p in weights]
+    trace_opnorms = [t / o for t, o in zip(traces, opnorms)]
+    svdvals = t.concat([t.linalg.svdvals(p) for p in weights], dim=1)
+    ret = {
+        'w_l1': mean(l1s),
+        'w_l2': mean(l2s),
+        'w_l1/l2': mean(l1_l2s),
+        'w_mean': concat_weights.mean(dim=1),
+        'w_median': concat_weights.median(dim=1).values,
+        'w_std': concat_weights.std(dim=1),
+        'b_mean': concat_biases.mean(dim=1),
+        'b_median': concat_biases.median(dim=1).values,
+        'b_std': concat_biases.std(dim=1),
+        'w_trace': mean(traces),
+        'w_opnorm': mean(opnorms),
+        'w_trace/opnorm': mean(trace_opnorms),
+        'w_svdval_mean': svdvals.mean(dim=1),
+        'w_svdval_std': svdvals.std(dim=1),
+    }
+    ret = {k: v.squeeze() for k, v in ret.items()}
+    assert all(v.shape == (len(model),) for v in ret.values())
     return ret
     

@@ -22,7 +22,7 @@ import re
 import warnings
 import sys
 import pathlib
-from model_utils import weight_norm
+from model_utils import weight_norm, get_hmm_metrics
 
 ROOT = pathlib.Path(__file__).parent.parent.resolve()  # repo root
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -59,6 +59,7 @@ class Parameters:
     unembed_bias: bool = False
     init_func: str = "kaiming_uniform"
     replacement: bool = False
+    save_hmm: bool = False # save HMM metrics
 
 
 def train(model, group_dataset, params):
@@ -145,6 +146,8 @@ def train(model, group_dataset, params):
 
         if not os.path.exists(directory_path):
             os.makedirs(directory_path + "/losses")
+            if params.save_hmm:
+                os.makedirs(directory_path + "/hmm_metrics")
             os.makedirs(directory_path + "/ckpts")
 
         with open(directory_path + "/params.json", "w") as f:
@@ -188,8 +191,10 @@ def train(model, group_dataset, params):
                         model.state_dict(),
                         directory_path + f"/ckpts/{epoch:06d}.pt",
                     )
-                if params.save_losses:
-                    t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
+            if params.save_losses:
+                t.save(loss_dict, directory_path + f"/losses/{epoch:06d}.pt")
+            if params.save_hmm:
+                t.save(get_hmm_metrics(model), directory_path + f"/hmm_metrics/{epoch:06d}.pt")
 
         epoch_train_loss.zero_()
         epoch_train_acc.zero_()

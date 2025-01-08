@@ -146,10 +146,20 @@ def test_loss(
 def load_loss_trajectory(
     save_path: str,
 ) -> dict[str, Float[t.Tensor, "instance epoch"]]:
-    """Load loss trajectory from a saved file."""
+    """Load loss trajectory from saved tensors."""
     loss_files = sorted(glob.glob(f"{save_path}/losses/*.pt"))
     losses = [t.load(f) for f in loss_files]
     return {k: t.stack([l[k] for l in losses], dim=1) for k in losses[0]}
+
+@jaxtyped(typechecker=beartype)
+def load_hmm_trajectory(
+    save_path: str,
+) -> dict[str, Float[t.Tensor, "instance epoch"]]:
+    """Load hmm trajectory from saved tensors."""
+    loss_files = sorted(glob.glob(f"{save_path}/hmm_metrics/*.pt"))
+    losses = [t.load(f) for f in loss_files]
+    return {k: t.stack([l[k] for l in losses], dim=1) for k in losses[0]}
+
 
 @jaxtyped(typechecker=beartype)
 def is_grokked(
