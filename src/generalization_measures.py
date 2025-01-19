@@ -30,7 +30,7 @@ def perturbed_model(models, sigmas, rng, mag=False):
 
 @t.no_grad()
 def pacbayes_sigma(
-    models, dataset, seed=777, search_depth=15, samples=30, target_delta=0.1, acc_tol=1e-2, mag=False, verbose=False
+    models, dataset, seed=777, search_depth=15, samples=1000, target_delta=0.1, acc_tol=1e-2, mag=False, verbose=False,
 ):
     rng = t.Generator(device=device)
     rng.manual_seed(seed)
@@ -39,7 +39,7 @@ def pacbayes_sigma(
     # phase 1: doubling
     sigmas = t.ones(len(models), device=device)
     done = t.zeros_like(sigmas, dtype=t.bool)
-    while not done.all():
+    for _ in tqdm(range(search_depth), desc=f'DOUBLING'):
         perturb_accs = []
         for _ in range(samples):
             perturbed = perturbed_model(models, sigmas, rng, mag=mag)
@@ -51,13 +51,13 @@ def pacbayes_sigma(
             break
         sigmas[~done] *= 2
         if verbose:
-            print('PHASE 1 CONVERGED', done.sum())
+            print('PHASE 1 CONVERGED', done.sum().item())
     
     # phase 2: binary search
     lower = t.zeros_like(sigmas)
     done = t.zeros_like(sigmas, dtype=t.bool)
     upper = sigmas
-    for _ in tqdm(range(search_depth)):
+    for _ in tqdm(range(search_depth), desc=f'BINARY SEARCH'):
         mid = (lower + upper) / 2
         perturb_accs = []
         for __ in range(samples):
@@ -70,7 +70,7 @@ def pacbayes_sigma(
         lower[~done] = t.where(delta[~done] < target_delta, mid[~done], lower[~done])
         upper[~done] = t.where(delta[~done] >= target_delta, mid[~done], upper[~done])
         if verbose:
-            print('PHASE 2 CONVERGED', done.sum())
+            print('PHASE 2 CONVERGED', done.sum().item())
             print('MID', mid[:10])
             print('DELTA', delta[:10])
         if done.all():
@@ -205,7 +205,7 @@ def get_gen_measures(init_models, models, dataset):
         if name == 'INVERSE_MARGIN':
             return value
         if name.startswith('LOG_'):
-            return 0.5 * (value - np.log(m))
+            return 0.5 * (value - math.log(m))
         else:
-            return np.sqrt(value / m)
+            return t.sqrt(value / m)
     return {k: adjust_measure(k, v) for k, v in measures.items()}

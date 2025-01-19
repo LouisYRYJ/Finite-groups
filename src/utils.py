@@ -151,7 +151,7 @@ def load_loss_trajectory(
 ) -> dict[str, Float[t.Tensor, "instance epoch"]]:
     """Load loss trajectory from saved tensors."""
     loss_files = sorted(glob.glob(f"{save_path}/losses/*.pt"))
-    losses = [t.load(f) for f in loss_files]
+    losses = [t.load(f) for f in loss_files if 'final.pt' not in f]
     return {k: t.stack([l[k] for l in losses], dim=1) for k in losses[0]}
 
 @jaxtyped(typechecker=beartype)
