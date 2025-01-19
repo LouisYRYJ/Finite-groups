@@ -82,7 +82,7 @@ def get_cross_entropy(
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
 def get_margin(
-    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"]
+    logits: Float[t.Tensor, "batch instance vocab"], labels: Int[t.Tensor, "batch"], quantile: Any = None,
 ) -> Float[t.Tensor, "instance"]:
     """
     Compute instance-wise margin (correct logit minus max incorrect logit; min across batches)
@@ -106,7 +106,10 @@ def get_margin(
     #     src=t.ones_like(logits) * -np.inf
     # )
     # other_logits = t.max(other_logits, dim=2).values
-    return t.clamp(t.min(label_logits - other_logits, dim=0).values, min=0)
+    if quantile is None:
+        return t.clamp(t.min(label_logits - other_logits, dim=0).values, min=0)
+    else:
+        return t.clamp(t.quantile(label_logits - other_logits, q=quantile, dim=0), min=0)
 
 @jaxtyped(typechecker=beartype)
 @t.no_grad()
