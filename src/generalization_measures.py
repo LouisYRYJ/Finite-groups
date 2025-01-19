@@ -41,7 +41,7 @@ def pacbayes_sigma(
     done = t.zeros_like(sigmas, dtype=t.bool)
     for _ in tqdm(range(search_depth), desc=f'DOUBLING'):
         perturb_accs = []
-        for _ in range(samples):
+        for _ in range(samples // 10):  # Don't need this to be very accurate
             perturbed = perturbed_model(models, sigmas, rng, mag=mag)
             perturb_accs.append(train_acc(perturbed, dataset))
             del perturbed
