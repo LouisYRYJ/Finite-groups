@@ -22,13 +22,13 @@ else:
 
 @jaxtyped(typechecker=beartype)
 def cyclic(N: int) -> Group:
-    return Group.from_gap(gap.CyclicGroup(N))
-    # elements = list(range(N))
-    # cayley_table = t.zeros((N, N), dtype=t.int64)
-    # for i in range(N):
-    #     for j in range(N):
-    #         cayley_table[i, j] = (i + j) % N
-    # return Group(elements, cayley_table)
+    # return Group.from_gap(gap.CyclicGroup(N))
+    elements = list(range(N))
+    cayley_table = t.zeros((N, N), dtype=t.int64)
+    for i in range(N):
+        for j in range(N):
+            cayley_table[i, j] = (i + j) % N
+    return Group(elements, cayley_table)
 
 
 @jaxtyped(typechecker=beartype)
@@ -98,10 +98,13 @@ def semidirect_product(
 def direct_product(group1: Group, group2: Group) -> Group:
     # Semidirect_product because it doesn't support gap_repr
     # TODO: compute gap_repr for general semidirect_product
-    if group1.gap_repr is None or group2.gap_repr is None:
-        return semidirect_product(group1, group2, lambda x: lambda y: y)
+    # if group1.gap_repr is None or group2.gap_repr is None:
+    return semidirect_product(group1, group2, lambda x: lambda y: y)
 
+    # This sometimes breaks because the gap.DirectProduct has elements
+    # which are not DirectProductElements...
     gap_group = gap.DirectProduct(group1.gap_repr, group2.gap_repr)
+    import pdb; pdb.set_trace()
     elements = [
         gap.DirectProductElement((a, b))
         for b in group2.elements for a in group1.elements
