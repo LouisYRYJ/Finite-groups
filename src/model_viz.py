@@ -6,7 +6,8 @@ from einops import rearrange
 import torch as t
 import matplotlib.pyplot as plt
 import plotly.express as px
-from utils import make_fourier_basis, model_table
+from utils import make_fourier_basis
+from model_utils import model_table
 import os
 from group_data import string_to_groups
 from itertools import product

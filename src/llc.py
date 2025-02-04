@@ -190,7 +190,7 @@ def get_llc(
         cur_trace = sgld_trace(
             model, dataset, eps, beta, gamma, floor=floor,
             epochs=epochs, tq=tq, ibatch_size=ibatch_size, replacement=replacement,
-            batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss
+            batch_size=batch_size, pos_func=pos_func, behavioral=behavioral, output_is_loss=output_is_loss,
         )
         cur_trace = einops.rearrange(cur_trace, '(chain instance) ... -> chain instance ...', chain=cbatch_size).mean(dim=0)
         trace += cur_trace
